@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Send, BarChart3, CheckCircle2, AlertCircle, Trash2, RefreshCw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 
 type SubmissionStatus = "success" | "error";
 
@@ -40,6 +41,40 @@ const PreSalesSummary = () => {
         // Otherwise, add https://
         return `https://${trimmed}`;
     };
+
+    const fetchHistory = async () => {
+        setIsLoadingHistory(true);
+        try {
+            const { data, error } = await supabase
+                .from('presales_summaries')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const mappedSubmissions: SubmissionLog[] = (data || []).map((item: any) => ({
+                id: item.id,
+                companyName: item.company_name || "Unknown Company",
+                url: item.website_url || "",
+                createdAt: item.created_at,
+                status: "success", // Assuming stored items are successful
+                message: "Generated successfully",
+                fileUrl: item.summary_link
+            }));
+
+            setSubmissions(mappedSubmissions);
+        } catch (error) {
+            console.error("Error fetching history:", error);
+            toast.error("Failed to load submission history");
+        } finally {
+            setIsLoadingHistory(false);
+        }
+    };
+
+    // Load history on mount
+    useEffect(() => {
+        fetchHistory();
+    }, []);
 
     const submitSummaryRequest = async () => {
         const trimmedCompanyName = companyName.trim();
@@ -140,23 +175,49 @@ const PreSalesSummary = () => {
                 throw new Error(responseMessage || `Request failed with status ${response.status}`);
             }
 
+            // Save to Supabase if we have a file URL
+            if (fileUrl) {
+                const { error: insertError } = await supabase
+                    .from('presales_summaries')
+                    .insert([
+                        {
+                            company_name: trimmedCompanyName,
+                            website_url: urlToSend,
+                            summary_link: fileUrl,
+                        }
+                    ]);
+
+                if (insertError) {
+                    console.error("Error saving to Supabase:", insertError);
+                    toast.error("Generated report but failed to save to history");
+                } else {
+                    // Refresh history to show the new item
+                    fetchHistory();
+                }
+            }
+
             // Use a more user-friendly message if available
             const displayMessage = responseMessage || "Pre-sales summary request submitted successfully";
 
             toast.success(displayMessage);
             setActiveTab("output");
-            setSubmissions((prev) => [
-                {
-                    id: crypto.randomUUID(),
-                    companyName: trimmedCompanyName,
-                    url: urlToSend,
-                    createdAt: new Date().toISOString(),
-                    status: "success",
-                    message: displayMessage,
-                    fileUrl: fileUrl,
-                },
-                ...prev,
-            ]);
+
+            // If we didn't save to Supabase (no fileUrl), we might want to show a temporary item or just rely on the toast
+            if (!fileUrl) {
+                setSubmissions((prev) => [
+                    {
+                        id: crypto.randomUUID(),
+                        companyName: trimmedCompanyName,
+                        url: urlToSend,
+                        createdAt: new Date().toISOString(),
+                        status: "success",
+                        message: displayMessage,
+                        fileUrl: fileUrl,
+                    },
+                    ...prev,
+                ]);
+            }
+
             setCompanyName("");
             setWebsiteUrl("");
         } catch (error) {
@@ -183,72 +244,24 @@ const PreSalesSummary = () => {
         }
     };
 
-    const fetchHistory = async () => {
-        setIsLoadingHistory(true);
-        try {
-            const response = await fetch("https://mountaintop.app.n8n.cloud/webhook/pre-sales-call");
-            if (!response.ok) throw new Error("Failed to fetch history");
-
-            const data = await response.json();
-
-            // Handle different response formats
-            let historyData: any[] = [];
-            if (Array.isArray(data)) {
-                historyData = data;
-            } else if (data.files && Array.isArray(data.files)) {
-                historyData = data.files;
-            } else if (data.submissions && Array.isArray(data.submissions)) {
-                historyData = data.submissions;
-            } else if (data.data && Array.isArray(data.data)) {
-                historyData = data.data;
-            }
-
-            // Map the response to our SubmissionLog format
-            const mappedSubmissions: SubmissionLog[] = historyData.map((item: any) => {
-                // Extract company name and URL from the item
-                const company = item.companyName || item.company || item.name || "";
-                const url = item.websiteUrl || item.url || item.website || "";
-                const createdAt = item.createdAt || item.createdTime || item.date || new Date().toISOString();
-                const status = item.status === "success" || item.status === "Success" ? "success" : "error";
-                const message = item.message || item.response || item.status || "";
-                const fileUrl = item.fileUrl || item.downloadUrl || item.reportUrl || item.pdf || item.link || item.url_file || "";
-
-                return {
-                    id: item.id || crypto.randomUUID(),
-                    companyName: company,
-                    url: url,
-                    createdAt: createdAt,
-                    status: status as SubmissionStatus,
-                    message: message,
-                    fileUrl: fileUrl,
-                };
-            });
-
-            // Sort by created date (newest first)
-            const sortedSubmissions = mappedSubmissions.sort((a, b) =>
-                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
-
-            // Replace submissions with data from webhook (or merge if you want to keep local-only entries)
-            // For now, we'll replace to show the authoritative data from the webhook
-            setSubmissions(sortedSubmissions);
-
-            if (mappedSubmissions.length > 0) {
-                toast.success(`Loaded ${mappedSubmissions.length} submission(s) from history`);
-            } else {
-                toast.info("No submissions found in history");
-            }
-        } catch (error) {
-            console.error("Error fetching history:", error);
-            toast.error("Failed to load submission history");
-        } finally {
-            setIsLoadingHistory(false);
-        }
-    };
-
-    const deleteSubmission = (id: string) => {
+    const deleteSubmission = async (id: string) => {
+        // Optimistic update
         setSubmissions((prev) => prev.filter((entry) => entry.id !== id));
-        toast.success("Submission deleted");
+
+        try {
+            const { error } = await supabase
+                .from('presales_summaries')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+            toast.success("Submission deleted");
+        } catch (error) {
+            console.error("Error deleting submission:", error);
+            toast.error("Failed to delete submission");
+            // Revert optimistic update if needed, but for now we'll just let the next fetch fix it
+            fetchHistory();
+        }
     };
 
     const analytics = useMemo(() => {
