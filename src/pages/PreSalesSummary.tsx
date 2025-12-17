@@ -1,11 +1,11 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Send, BarChart3, CheckCircle2, AlertCircle, Trash2, RefreshCw } from "lucide-react";
+import { FileText, Send, BarChart3, CheckCircle2, AlertCircle, Trash2, RefreshCw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 type SubmissionStatus = "success" | "error";
@@ -17,6 +17,7 @@ interface SubmissionLog {
     createdAt: string;
     status: SubmissionStatus;
     message?: string;
+    fileUrl?: string;
 }
 
 const PreSalesSummary = () => {
@@ -74,16 +75,24 @@ const PreSalesSummary = () => {
         };
 
         try {
+            // Create a controller for the timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
             const response = await fetch("https://mountaintop.app.n8n.cloud/webhook/pre-sales-call-report", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify(requestPayload),
+                signal: controller.signal,
             });
+
+            clearTimeout(timeoutId);
 
             let responseMessage = "Submitted successfully";
             let responseData: any = null;
+            let fileUrl: string | undefined = undefined;
 
             // Try to parse JSON response
             const contentType = response.headers.get("content-type");
@@ -97,6 +106,17 @@ const PreSalesSummary = () => {
                         responseData?.result ||
                         responseData?.data?.message ||
                         (response.ok ? "Workflow was started" : "Request failed");
+
+                    // Try to find file URL in response
+                    fileUrl =
+                        responseData?.fileUrl ||
+                        responseData?.downloadUrl ||
+                        responseData?.reportUrl ||
+                        responseData?.pdf ||
+                        responseData?.url ||
+                        responseData?.link ||
+                        responseData?.data?.fileUrl ||
+                        responseData?.data?.url;
                 } catch (e) {
                     console.error("Failed to parse JSON response:", e);
                 }
@@ -106,6 +126,10 @@ const PreSalesSummary = () => {
                     const text = await response.text();
                     if (text) {
                         responseMessage = text;
+                        // If the text looks like a URL, treat it as the file URL
+                        if (text.startsWith("http")) {
+                            fileUrl = text;
+                        }
                     }
                 } catch (e) {
                     console.error("Failed to read text response:", e);
@@ -129,6 +153,7 @@ const PreSalesSummary = () => {
                     createdAt: new Date().toISOString(),
                     status: "success",
                     message: displayMessage,
+                    fileUrl: fileUrl,
                 },
                 ...prev,
             ]);
@@ -136,7 +161,12 @@ const PreSalesSummary = () => {
             setWebsiteUrl("");
         } catch (error) {
             const message = error instanceof Error ? error.message : "Submission failed";
-            toast.error(message);
+            if (error instanceof Error && error.name === 'AbortError') {
+                toast.error("Request timed out. The report might still be generating.");
+            } else {
+                toast.error(message);
+            }
+
             setSubmissions((prev) => [
                 {
                     id: crypto.randomUUID(),
@@ -144,7 +174,7 @@ const PreSalesSummary = () => {
                     url: urlToSend || trimmedUrl,
                     createdAt: new Date().toISOString(),
                     status: "error",
-                    message,
+                    message: error instanceof Error && error.name === 'AbortError' ? "Request timed out" : message,
                 },
                 ...prev,
             ]);
@@ -181,6 +211,7 @@ const PreSalesSummary = () => {
                 const createdAt = item.createdAt || item.createdTime || item.date || new Date().toISOString();
                 const status = item.status === "success" || item.status === "Success" ? "success" : "error";
                 const message = item.message || item.response || item.status || "";
+                const fileUrl = item.fileUrl || item.downloadUrl || item.reportUrl || item.pdf || item.link || item.url_file || "";
 
                 return {
                     id: item.id || crypto.randomUUID(),
@@ -189,6 +220,7 @@ const PreSalesSummary = () => {
                     createdAt: createdAt,
                     status: status as SubmissionStatus,
                     message: message,
+                    fileUrl: fileUrl,
                 };
             });
 
@@ -338,6 +370,19 @@ const PreSalesSummary = () => {
                                                                 <p className="text-sm text-muted-foreground">
                                                                     {entry.message}
                                                                 </p>
+                                                            )}
+                                                            {entry.fileUrl && (
+                                                                <div className="pt-2">
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="gap-2"
+                                                                        onClick={() => window.open(entry.fileUrl, '_blank')}
+                                                                    >
+                                                                        <ExternalLink className="h-3 w-3" />
+                                                                        View Report
+                                                                    </Button>
+                                                                </div>
                                                             )}
                                                         </div>
                                                         <div className="flex items-center gap-2">
