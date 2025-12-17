@@ -1,0 +1,138 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Light theme - matching Mountain Top Web Design */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Mountain Top Orange - Primary accent (#FF9933 / rgb(255, 153, 51)) */
+    --primary: 30 100% 60%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 30 100% 70%;
+    
+    /* Navy Blue - Secondary accent for mountains/professionalism */
+    --secondary: 215 25% 27%;
+    --secondary-foreground: 0 0% 100%;
+    --secondary-light: 215 25% 37%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 30 100% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 30 100% 60%;
+
+    --radius: 0.5rem;
+
+    /* Chart colors - using orange and blue variations */
+    --chart-1: 30 100% 60%;
+    --chart-2: 215 25% 27%;
+    --chart-3: 200 80% 50%;
+    --chart-4: 35 100% 65%;
+    --chart-5: 210 50% 45%;
+
+    /* Success/Warning/Info colors */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 5%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    
+    /* Shadows - lighter for light theme */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.15);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer utilities {
+  /* Simple card utilities - dark theme */
+  .glass {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+  }
+
+  .glass-dark {
+    background: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+  }
+
+  .glass-card {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.4);
+  }
+  
+  .glass-card:hover {
+    border-color: hsl(var(--primary) / 0.3);
+  }
+
+  /* Text styling */
+  .gradient-text {
+    color: hsl(var(--foreground));
+    font-weight: 700;
+  }
+
+  /* Button styling */
+  .animated-gradient {
+    background: hsl(var(--primary));
+    transition: all 0.2s ease;
+  }
+  
+  .animated-gradient:hover {
+    background: hsl(var(--primary-light));
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(240, 130, 106, 0.4);
+  }
+
+  /* Remove floating animation */
+  .animate-float {
+    /* No animation */
+  }
+
+  /* Simple hover effects */
+  .hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+}
