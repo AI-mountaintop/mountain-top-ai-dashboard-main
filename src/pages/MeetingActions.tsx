@@ -5,42 +5,54 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Send, BarChart3, RefreshCw, Calendar, Link as LinkIcon } from "lucide-react";
+import { FileText, Send, BarChart3, RefreshCw, Calendar, Link as LinkIcon, ExternalLink, Mail, X } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { supabase } from "@/lib/supabase";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 
-interface ActionItemFile {
+interface MeetingActionItem {
     id: string;
-    name: string;
-    createdTime: string;
-    webViewLink: string;
+    meeting_name: string;
+    meetgeek_url: string;
+    google_drive_link: string;
+    html_content: string;
+    created_at: string;
 }
 
 const MeetingActions = () => {
     const [meetGeekUrl, setMeetGeekUrl] = useState("");
-    const [email, setEmail] = useState("");
     const [isGenerating, setIsGenerating] = useState(false);
     const [activeTab, setActiveTab] = useState("input");
 
     // History state
-    const [history, setHistory] = useState<ActionItemFile[]>([]);
+    const [history, setHistory] = useState<MeetingActionItem[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-    const [previewId, setPreviewId] = useState<string | null>(null);
+
+    // Modal state
+    const [selectedMeeting, setSelectedMeeting] = useState<MeetingActionItem | null>(null);
+    const [emailToSend, setEmailToSend] = useState("");
+    const [isSendingEmail, setIsSendingEmail] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     const fetchHistory = async () => {
         setIsLoadingHistory(true);
         try {
-            const response = await fetch("https://mountaintop.app.n8n.cloud/webhook/meeting_to_action");
-            if (!response.ok) throw new Error("Failed to fetch history");
+            const { data, error } = await supabase
+                .from('meeting_action_items')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-            const data = await response.json();
-            // Ensure data is an array and sort by createdTime desc
-            const files = Array.isArray(data) ? data : (data.files || []);
-            const sortedFiles = files.sort((a: ActionItemFile, b: ActionItemFile) =>
-                new Date(b.createdTime).getTime() - new Date(a.createdTime).getTime()
-            );
+            if (error) throw error;
 
-            setHistory(sortedFiles);
+            setHistory(data || []);
         } catch (error) {
             console.error("Error fetching history:", error);
             toast.error("Failed to load action items history");
@@ -57,11 +69,6 @@ const MeetingActions = () => {
     const handleGenerate = async () => {
         if (!meetGeekUrl.trim()) {
             toast.error("Please enter a MeetGeek URL");
-            return;
-        }
-
-        if (!email.trim()) {
-            toast.error("Please enter an email address");
             return;
         }
 
@@ -83,7 +90,6 @@ const MeetingActions = () => {
                 },
                 body: JSON.stringify({
                     meetGeekUrl: meetGeekUrl.trim(),
-                    email: email.trim(),
                 }),
             });
 
@@ -96,7 +102,7 @@ const MeetingActions = () => {
             setMeetGeekUrl("");
             // Refresh history to show the newly generated action items
             // Note: It might take some time for the file to appear, so immediate refresh might not show it yet
-            setTimeout(fetchHistory, 2000);
+            setTimeout(fetchHistory, 5000);
 
         } catch (error) {
             console.error("Error generating action items:", error);
@@ -106,11 +112,46 @@ const MeetingActions = () => {
         }
     };
 
-    const togglePreview = (id: string) => {
-        if (previewId === id) {
-            setPreviewId(null);
-        } else {
-            setPreviewId(id);
+    const openMeetingModal = (meeting: MeetingActionItem) => {
+        setSelectedMeeting(meeting);
+        setEmailToSend("");
+        setIsModalOpen(true);
+    };
+
+    const handleSendEmail = async () => {
+        if (!selectedMeeting) return;
+        if (!emailToSend.trim()) {
+            toast.error("Please enter an email address");
+            return;
+        }
+
+        setIsSendingEmail(true);
+
+        try {
+            const response = await fetch("https://mountaintop.app.n8n.cloud/webhook/d726ee80-72d0-4cba-bb9d-4cdbed81be64", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    meeting_name: selectedMeeting.meeting_name,
+                    html_content: selectedMeeting.html_content,
+                    email: emailToSend.trim(),
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to send email");
+            }
+
+            toast.success(`Email sent to ${emailToSend}`);
+            // Optional: Close modal after success
+            // setIsModalOpen(false); 
+        } catch (error) {
+            console.error("Error sending email:", error);
+            toast.error("Failed to send email. Please try again.");
+        } finally {
+            setIsSendingEmail(false);
         }
     };
 
@@ -141,7 +182,7 @@ const MeetingActions = () => {
                                         Meeting Information
                                     </CardTitle>
                                     <CardDescription>
-                                        Provide the MeetGeek recording URL and email to generate action items
+                                        Provide the MeetGeek recording URL to generate action items
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
@@ -153,17 +194,6 @@ const MeetingActions = () => {
                                             placeholder="https://meetgeek.ai/recording/..."
                                             value={meetGeekUrl}
                                             onChange={(e) => setMeetGeekUrl(e.target.value)}
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="email">Email Address</Label>
-                                        <Input
-                                            id="email"
-                                            type="email"
-                                            placeholder="team@example.com"
-                                            value={email}
-                                            onChange={(e) => setEmail(e.target.value)}
                                         />
                                     </div>
 
@@ -201,52 +231,42 @@ const MeetingActions = () => {
                                         </div>
                                     ) : history.length > 0 ? (
                                         <div className="space-y-4">
-                                            {history.map((file) => (
-                                                <div key={file.id} className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors">
-                                                    <div className="flex items-center justify-between mb-4">
-                                                        <div
-                                                            className="cursor-pointer hover:opacity-80 transition-opacity flex-1"
-                                                            onClick={() => togglePreview(file.id)}
-                                                        >
+                                            {history.map((item) => (
+                                                <div key={item.id} className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex-1">
                                                             <div className="flex items-center gap-3">
                                                                 <div className="bg-primary/10 p-2 rounded-full">
                                                                     <FileText className="h-5 w-5 text-primary" />
                                                                 </div>
                                                                 <div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <h3 className="font-medium underline decoration-dotted underline-offset-4">
-                                                                            {file.name}
-                                                                        </h3>
-                                                                        <span className="text-[10px] text-muted-foreground bg-background px-2 py-0.5 rounded-full border">
-                                                                            {previewId === file.id ? "Hide Preview" : "Click to Preview"}
-                                                                        </span>
-                                                                    </div>
+                                                                    <h3 className="font-medium">
+                                                                        {item.meeting_name || "Untitled Meeting"}
+                                                                    </h3>
                                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                                                                         <Calendar className="h-3 w-3" />
-                                                                        {format(new Date(file.createdTime), "PPP 'at' p")}
+                                                                        {format(new Date(item.created_at), "PPP 'at' p")}
                                                                     </div>
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <Button asChild variant="outline" size="sm">
-                                                            <a href={`https://docs.google.com/document/d/${file.id}/edit`} target="_blank" rel="noopener noreferrer">
-                                                                Open in Docs
-                                                            </a>
-                                                        </Button>
-                                                    </div>
-
-                                                    {previewId === file.id && (
-                                                        <div className="aspect-video w-full bg-muted rounded-lg overflow-hidden border border-border shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
-                                                            <iframe
-                                                                src={`https://docs.google.com/document/d/${file.id}/preview`}
-                                                                frameBorder="0"
-                                                                width="100%"
-                                                                height="100%"
-                                                                allowFullScreen={true}
-                                                                title={`Preview of ${file.name}`}
-                                                            ></iframe>
+                                                        <div className="flex items-center gap-2">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => openMeetingModal(item)}
+                                                            >
+                                                                View Minutes
+                                                            </Button>
+                                                            {item.google_drive_link && (
+                                                                <Button asChild variant="ghost" size="sm">
+                                                                    <a href={item.google_drive_link} target="_blank" rel="noopener noreferrer">
+                                                                        <ExternalLink className="h-4 w-4" />
+                                                                    </a>
+                                                                </Button>
+                                                            )}
                                                         </div>
-                                                    )}
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
@@ -277,35 +297,71 @@ const MeetingActions = () => {
                                         </p>
                                     </CardContent>
                                 </Card>
-
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Total Cost</CardTitle>
-                                        <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="text-2xl font-bold">$0.00</div>
-                                        <p className="text-xs text-muted-foreground">
-                                            API usage cost
-                                        </p>
-                                    </CardContent>
-                                </Card>
-
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Avg. Time</CardTitle>
-                                        <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="text-2xl font-bold">0s</div>
-                                        <p className="text-xs text-muted-foreground">
-                                            Generation time
-                                        </p>
-                                    </CardContent>
-                                </Card>
                             </div>
                         </TabsContent>
                     </Tabs>
+
+                    <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+                        <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+                            <DialogHeader>
+                                <DialogTitle>{selectedMeeting?.meeting_name || "Meeting Minutes"}</DialogTitle>
+                                <DialogDescription>
+                                    Review the generated minutes and send them via email.
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="flex-1 overflow-y-auto border rounded-md p-4 bg-muted/30 my-4">
+                                {selectedMeeting?.html_content ? (
+                                    <div
+                                        className="prose prose-sm max-w-none dark:prose-invert"
+                                        dangerouslySetInnerHTML={{ __html: selectedMeeting.html_content }}
+                                    />
+                                ) : (
+                                    <div className="text-center py-8 text-muted-foreground">
+                                        No content available.
+                                    </div>
+                                )}
+                            </div>
+
+                            <DialogFooter className="flex-col sm:flex-row gap-2 items-center border-t pt-4">
+                                <div className="flex-1 w-full flex items-center gap-2">
+                                    <Mail className="h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Enter email address..."
+                                        value={emailToSend}
+                                        onChange={(e) => setEmailToSend(e.target.value)}
+                                        className="flex-1"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2 w-full sm:w-auto">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setIsModalOpen(false)}
+                                        className="flex-1 sm:flex-none"
+                                    >
+                                        Close
+                                    </Button>
+                                    <Button
+                                        onClick={handleSendEmail}
+                                        disabled={isSendingEmail}
+                                        className="flex-1 sm:flex-none"
+                                    >
+                                        {isSendingEmail ? (
+                                            <>
+                                                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                                Sending...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Send className="mr-2 h-4 w-4" />
+                                                Send Email
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                 </main>
             </div>
         </div>
