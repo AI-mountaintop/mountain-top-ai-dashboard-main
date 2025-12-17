@@ -77,7 +77,7 @@ const PreSalesSummary = () => {
         try {
             // Create a controller for the timeout
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+            const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minute timeout
 
             const response = await fetch("https://mountaintop.app.n8n.cloud/webhook/pre-sales-call-report", {
                 method: "POST",
@@ -388,8 +388,8 @@ const PreSalesSummary = () => {
                                                         <div className="flex items-center gap-2">
                                                             <span
                                                                 className={`text-xs px-2 py-1 rounded-full border ${entry.status === "success"
-                                                                        ? "border-green-200 bg-green-50 text-green-700"
-                                                                        : "border-red-200 bg-red-50 text-red-700"
+                                                                    ? "border-green-200 bg-green-50 text-green-700"
+                                                                    : "border-red-200 bg-red-50 text-red-700"
                                                                     }`}
                                                             >
                                                                 {entry.status === "success" ? "Success" : "Error"}
