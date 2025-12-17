@@ -4,44 +4,41 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Send, BarChart3, RefreshCw, Calendar } from "lucide-react";
+import { FileText, Send, BarChart3, RefreshCw, Calendar, Link as LinkIcon, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { supabase } from "@/lib/supabase";
 
-interface TrailmapFile {
+interface DigitalTrailmapItem {
     id: string;
-    name: string;
-    createdTime: string;
-    webViewLink: string;
+    meeting_name: string;
+    meeting_link: string;
+    trailmap_link: string;
+    report_link: string;
+    created_at: string;
 }
 
 const DigitalTrailmap = () => {
-    const [meetingName, setMeetingName] = useState("");
-    const [transcript, setTranscript] = useState("");
+    const [meetingLink, setMeetingLink] = useState("");
     const [isGenerating, setIsGenerating] = useState(false);
     const [activeTab, setActiveTab] = useState("input");
 
     // History state
-    const [history, setHistory] = useState<TrailmapFile[]>([]);
+    const [history, setHistory] = useState<DigitalTrailmapItem[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-    const [previewId, setPreviewId] = useState<string | null>(null);
 
     const fetchHistory = async () => {
         setIsLoadingHistory(true);
         try {
-            const response = await fetch("https://mountaintop.app.n8n.cloud/webhook/165adb6d-3063-4ed2-95ff-7a8bf8b360af");
-            if (!response.ok) throw new Error("Failed to fetch history");
+            const { data, error } = await supabase
+                .from('digital_trailmaps')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-            const data = await response.json();
-            // Ensure data is an array and sort by createdTime desc
-            const files = Array.isArray(data) ? data : (data.files || []);
-            const sortedFiles = files.sort((a: TrailmapFile, b: TrailmapFile) =>
-                new Date(b.createdTime).getTime() - new Date(a.createdTime).getTime()
-            );
+            if (error) throw error;
 
-            setHistory(sortedFiles);
+            setHistory(data || []);
         } catch (error) {
             console.error("Error fetching history:", error);
             toast.error("Failed to load trailmap history");
@@ -56,8 +53,16 @@ const DigitalTrailmap = () => {
     }, []);
 
     const handleGenerate = async () => {
-        if (!meetingName || !transcript) {
-            toast.error("Please fill in all fields");
+        if (!meetingLink.trim()) {
+            toast.error("Please enter a Meeting Link");
+            return;
+        }
+
+        // Basic URL validation
+        try {
+            new URL(meetingLink);
+        } catch {
+            toast.error("Please enter a valid URL");
             return;
         }
 
@@ -70,8 +75,7 @@ const DigitalTrailmap = () => {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    meetingName,
-                    transcript,
+                    meetingLink: meetingLink.trim(),
                 }),
             });
 
@@ -79,28 +83,17 @@ const DigitalTrailmap = () => {
                 throw new Error("Failed to generate trailmap");
             }
 
-            // The original code had logic to parse response text and set generatedTrailmap.
-            // This is now handled by the webhook directly creating a file and the history fetching it.
-            // So, we can remove the parsing logic and direct state update for generatedTrailmap.
-
-            toast.success("Trailmap generated successfully!");
+            toast.success("Trailmap generation started successfully!");
             setActiveTab("output");
-            // Refresh history to show the newly generated trailmap
-            fetchHistory();
+            setMeetingLink("");
+            // Refresh history to show the newly generated trailmap (might take time to appear)
+            setTimeout(fetchHistory, 5000);
 
         } catch (error) {
             console.error("Error generating trailmap:", error);
             toast.error("Failed to generate trailmap. Please try again.");
         } finally {
             setIsGenerating(false);
-        }
-    };
-
-    const togglePreview = (id: string) => {
-        if (previewId === id) {
-            setPreviewId(null);
-        } else {
-            setPreviewId(id);
         }
     };
 
@@ -112,7 +105,7 @@ const DigitalTrailmap = () => {
                     <div className="mb-8">
                         <h1 className="text-3xl font-bold">Digital Trailmap Generation</h1>
                         <p className="text-muted-foreground mt-2">
-                            Generate comprehensive digital trailmaps from meeting transcripts
+                            Generate comprehensive digital trailmaps from meeting links
                         </p>
                     </div>
 
@@ -127,32 +120,22 @@ const DigitalTrailmap = () => {
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2">
-                                        <FileText className="h-5 w-5" />
+                                        <LinkIcon className="h-5 w-5" />
                                         Meeting Information
                                     </CardTitle>
                                     <CardDescription>
-                                        Provide the meeting name and transcript to generate a digital trailmap
+                                        Provide the meeting link to generate a digital trailmap
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="meeting-name">Meeting Name</Label>
+                                        <Label htmlFor="meeting-link">Meeting Link</Label>
                                         <Input
-                                            id="meeting-name"
-                                            placeholder="e.g., Q4 Strategy Meeting"
-                                            value={meetingName}
-                                            onChange={(e) => setMeetingName(e.target.value)}
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="transcript">Meeting Transcript</Label>
-                                        <Textarea
-                                            id="transcript"
-                                            placeholder="Paste the meeting transcript here..."
-                                            rows={12}
-                                            value={transcript}
-                                            onChange={(e) => setTranscript(e.target.value)}
+                                            id="meeting-link"
+                                            type="url"
+                                            placeholder="https://meetgeek.ai/recording/..."
+                                            value={meetingLink}
+                                            onChange={(e) => setMeetingLink(e.target.value)}
                                         />
                                     </div>
 
@@ -190,52 +173,43 @@ const DigitalTrailmap = () => {
                                         </div>
                                     ) : history.length > 0 ? (
                                         <div className="space-y-4">
-                                            {history.map((file) => (
-                                                <div key={file.id} className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors">
-                                                    <div className="flex items-center justify-between mb-4">
-                                                        <div
-                                                            className="cursor-pointer hover:opacity-80 transition-opacity flex-1"
-                                                            onClick={() => togglePreview(file.id)}
-                                                        >
+                                            {history.map((item) => (
+                                                <div key={item.id} className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex-1">
                                                             <div className="flex items-center gap-3">
                                                                 <div className="bg-primary/10 p-2 rounded-full">
                                                                     <FileText className="h-5 w-5 text-primary" />
                                                                 </div>
                                                                 <div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <h3 className="font-medium underline decoration-dotted underline-offset-4">
-                                                                            {file.name}
-                                                                        </h3>
-                                                                        <span className="text-[10px] text-muted-foreground bg-background px-2 py-0.5 rounded-full border">
-                                                                            {previewId === file.id ? "Hide Preview" : "Click to Preview"}
-                                                                        </span>
-                                                                    </div>
+                                                                    <h3 className="font-medium">
+                                                                        {item.meeting_name || "Untitled Meeting"}
+                                                                    </h3>
                                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                                                                         <Calendar className="h-3 w-3" />
-                                                                        {format(new Date(file.createdTime), "PPP 'at' p")}
+                                                                        {format(new Date(item.created_at), "PPP 'at' p")}
                                                                     </div>
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <Button asChild variant="outline" size="sm">
-                                                            <a href={`https://docs.google.com/presentation/d/${file.id}/edit`} target="_blank" rel="noopener noreferrer">
-                                                                Open in Slides
-                                                            </a>
-                                                        </Button>
-                                                    </div>
-
-                                                    {previewId === file.id && (
-                                                        <div className="aspect-video w-full bg-muted rounded-lg overflow-hidden border border-border shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
-                                                            <iframe
-                                                                src={`https://docs.google.com/presentation/d/${file.id}/embed?start=false&loop=false&delayms=3000`}
-                                                                frameBorder="0"
-                                                                width="100%"
-                                                                height="100%"
-                                                                allowFullScreen={true}
-                                                                title={`Preview of ${file.name}`}
-                                                            ></iframe>
+                                                        <div className="flex items-center gap-2">
+                                                            {item.trailmap_link && (
+                                                                <Button asChild variant="outline" size="sm">
+                                                                    <a href={item.trailmap_link} target="_blank" rel="noopener noreferrer">
+                                                                        View Trailmap
+                                                                    </a>
+                                                                </Button>
+                                                            )}
+                                                            {item.report_link && (
+                                                                <Button asChild variant="ghost" size="sm">
+                                                                    <a href={item.report_link} target="_blank" rel="noopener noreferrer">
+                                                                        <ExternalLink className="h-4 w-4 mr-2" />
+                                                                        View Report
+                                                                    </a>
+                                                                </Button>
+                                                            )}
                                                         </div>
-                                                    )}
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
