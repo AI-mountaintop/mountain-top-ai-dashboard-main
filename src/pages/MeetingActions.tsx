@@ -4,9 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Send, BarChart3, RefreshCw, Calendar } from "lucide-react";
+import { FileText, Send, BarChart3, RefreshCw, Calendar, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -18,8 +17,7 @@ interface ActionItemFile {
 }
 
 const MeetingActions = () => {
-    const [companyName, setCompanyName] = useState("");
-    const [transcript, setTranscript] = useState("");
+    const [meetGeekUrl, setMeetGeekUrl] = useState("");
     const [email, setEmail] = useState("");
     const [isGenerating, setIsGenerating] = useState(false);
     const [activeTab, setActiveTab] = useState("input");
@@ -57,23 +55,35 @@ const MeetingActions = () => {
     }, []);
 
     const handleGenerate = async () => {
-        if (!companyName || !transcript || !email) {
-            toast.error("Please fill in all fields");
+        if (!meetGeekUrl.trim()) {
+            toast.error("Please enter a MeetGeek URL");
+            return;
+        }
+
+        if (!email.trim()) {
+            toast.error("Please enter an email address");
+            return;
+        }
+
+        // Basic URL validation
+        try {
+            new URL(meetGeekUrl);
+        } catch {
+            toast.error("Please enter a valid URL");
             return;
         }
 
         setIsGenerating(true);
 
         try {
-            const response = await fetch("https://mountaintop.app.n8n.cloud/webhook/1d80ee94-9c02-4fba-8aec-112894af0fee", {
+            const response = await fetch("https://mountaintop.app.n8n.cloud/webhook/action-items", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    companyName,
-                    transcript,
-                    email,
+                    meetGeekUrl: meetGeekUrl.trim(),
+                    email: email.trim(),
                 }),
             });
 
@@ -81,10 +91,12 @@ const MeetingActions = () => {
                 throw new Error("Failed to generate action items");
             }
 
-            toast.success(`Action items generated and sent to ${email}`);
+            toast.success("Action items generation started");
             setActiveTab("output");
+            setMeetGeekUrl("");
             // Refresh history to show the newly generated action items
-            fetchHistory();
+            // Note: It might take some time for the file to appear, so immediate refresh might not show it yet
+            setTimeout(fetchHistory, 2000);
 
         } catch (error) {
             console.error("Error generating action items:", error);
@@ -125,39 +137,29 @@ const MeetingActions = () => {
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2">
-                                        <FileText className="h-5 w-5" />
+                                        <LinkIcon className="h-5 w-5" />
                                         Meeting Information
                                     </CardTitle>
                                     <CardDescription>
-                                        Provide company name, transcript, and email to generate action items
+                                        Provide the MeetGeek recording URL and email to generate action items
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="company-name">Company Name</Label>
+                                        <Label htmlFor="meetgeek-url">MeetGeek URL</Label>
                                         <Input
-                                            id="company-name"
-                                            placeholder="e.g., Acme Corporation"
-                                            value={companyName}
-                                            onChange={(e) => setCompanyName(e.target.value)}
+                                            id="meetgeek-url"
+                                            type="url"
+                                            placeholder="https://meetgeek.ai/recording/..."
+                                            value={meetGeekUrl}
+                                            onChange={(e) => setMeetGeekUrl(e.target.value)}
                                         />
                                     </div>
 
                                     <div className="space-y-2">
-                                        <Label htmlFor="meeting-transcript">Meeting Transcript</Label>
-                                        <Textarea
-                                            id="meeting-transcript"
-                                            placeholder="Paste the meeting transcript here..."
-                                            rows={10}
-                                            value={transcript}
-                                            onChange={(e) => setTranscript(e.target.value)}
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="action-email">Email for Action Items</Label>
+                                        <Label htmlFor="email">Email Address</Label>
                                         <Input
-                                            id="action-email"
+                                            id="email"
                                             type="email"
                                             placeholder="team@example.com"
                                             value={email}
@@ -171,7 +173,7 @@ const MeetingActions = () => {
                                         className="w-full"
                                     >
                                         <Send className="h-4 w-4 mr-2" />
-                                        {isGenerating ? "Generating..." : "Generate & Send Action Items"}
+                                        {isGenerating ? "Generating..." : "Generate Action Items"}
                                     </Button>
                                 </CardContent>
                             </Card>
