@@ -1,19 +1,62 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Sidebar } from "@/components/dashboard/Sidebar";
-import { useUsage } from "@/contexts/UsageContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, Languages, FileText, TrendingUp, Clock, Activity } from "lucide-react";
 import { format } from "date-fns";
+import { supabase } from "@/lib/supabase";
 
 const Home = () => {
   const navigate = useNavigate();
-  const { usageStats } = useUsage();
 
-  // Calculate site statistics
-  const translationsProcessed = 0;
-  const auditsGenerated = 0; // Placeholder for now
+  // State for real analytics counts
+  const [trailmapCount, setTrailmapCount] = useState(0);
+  const [presalesCount, setPresalesCount] = useState(0);
+  const [meetingActionsCount, setMeetingActionsCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const totalUsage = usageStats.analytics + usageStats.translation + usageStats.audit;
+  // Fetch counts from Supabase
+  useEffect(() => {
+    const fetchCounts = async () => {
+      setIsLoading(true);
+      try {
+        // Fetch digital trailmaps count
+        const { count: trailmaps, error: trailmapError } = await supabase
+          .from('digital_trailmaps')
+          .select('*', { count: 'exact', head: true });
+
+        if (!trailmapError && trailmaps !== null) {
+          setTrailmapCount(trailmaps);
+        }
+
+        // Fetch presales summaries count
+        const { count: presales, error: presalesError } = await supabase
+          .from('presales_summaries')
+          .select('*', { count: 'exact', head: true });
+
+        if (!presalesError && presales !== null) {
+          setPresalesCount(presales);
+        }
+
+        // Fetch meeting action items count
+        const { count: meetings, error: meetingsError } = await supabase
+          .from('meeting_action_items')
+          .select('*', { count: 'exact', head: true });
+
+        if (!meetingsError && meetings !== null) {
+          setMeetingActionsCount(meetings);
+        }
+      } catch (error) {
+        console.error("Error fetching counts:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCounts();
+  }, []);
+
+  const totalUsage = trailmapCount + presalesCount + meetingActionsCount;
 
   return (
     <div className="min-h-screen">
@@ -36,9 +79,9 @@ const Home = () => {
                 <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{usageStats.analytics}</div>
+                <div className="text-2xl font-bold">{isLoading ? '...' : trailmapCount}</div>
                 <p className="text-xs text-muted-foreground">
-                  {totalUsage > 0 ? `${Math.round((usageStats.analytics / totalUsage) * 100)}% of total usage` : 'No usage yet'}
+                  {totalUsage > 0 ? `${Math.round((trailmapCount / totalUsage) * 100)}% of total usage` : 'No usage yet'}
                 </p>
               </CardContent>
             </Card>
@@ -49,9 +92,9 @@ const Home = () => {
                 <BarChart3 className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{usageStats.translation}</div>
+                <div className="text-2xl font-bold">{isLoading ? '...' : presalesCount}</div>
                 <p className="text-xs text-muted-foreground">
-                  {totalUsage > 0 ? `${Math.round((usageStats.translation / totalUsage) * 100)}% of total usage` : 'No usage yet'}
+                  {totalUsage > 0 ? `${Math.round((presalesCount / totalUsage) * 100)}% of total usage` : 'No usage yet'}
                 </p>
               </CardContent>
             </Card>
@@ -62,9 +105,9 @@ const Home = () => {
                 <Languages className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{usageStats.audit}</div>
+                <div className="text-2xl font-bold">{isLoading ? '...' : meetingActionsCount}</div>
                 <p className="text-xs text-muted-foreground">
-                  {totalUsage > 0 ? `${Math.round((usageStats.audit / totalUsage) * 100)}% of total usage` : 'No usage yet'}
+                  {totalUsage > 0 ? `${Math.round((meetingActionsCount / totalUsage) * 100)}% of total usage` : 'No usage yet'}
                 </p>
               </CardContent>
             </Card>
@@ -102,7 +145,7 @@ const Home = () => {
                   Generate comprehensive digital trailmaps from meeting transcripts
                 </p>
                 <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold">{usageStats.analytics}</span>
+                  <span className="text-2xl font-bold">{isLoading ? '...' : trailmapCount}</span>
                   <span className="text-sm text-muted-foreground">trailmaps created</span>
                 </div>
               </CardContent>
@@ -120,7 +163,7 @@ const Home = () => {
                   Create pre-sales call summaries from website analysis
                 </p>
                 <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold">{translationsProcessed}</span>
+                  <span className="text-2xl font-bold">{isLoading ? '...' : presalesCount}</span>
                   <span className="text-sm text-muted-foreground">reports generated</span>
                 </div>
               </CardContent>
@@ -138,7 +181,7 @@ const Home = () => {
                   Convert meeting minutes into actionable items
                 </p>
                 <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold">{auditsGenerated}</span>
+                  <span className="text-2xl font-bold">{isLoading ? '...' : meetingActionsCount}</span>
                   <span className="text-sm text-muted-foreground">meetings processed</span>
                 </div>
               </CardContent>

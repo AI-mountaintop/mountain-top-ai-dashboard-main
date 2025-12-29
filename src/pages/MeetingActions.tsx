@@ -302,7 +302,7 @@ const MeetingActions = () => {
                     </Tabs>
 
                     <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                        <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+                        <DialogContent className="max-w-6xl max-h-[90vh] w-[95vw] flex flex-col">
                             <DialogHeader>
                                 <DialogTitle>{selectedMeeting?.meeting_name || "Meeting Minutes"}</DialogTitle>
                                 <DialogDescription>
