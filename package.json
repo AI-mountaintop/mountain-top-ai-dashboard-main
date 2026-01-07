@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "serve -s dist",
+    "start:railway": "npm run build && node server/index.js",
     "server": "./start-server.sh",
     "server:direct": "node server/index.js"
   },

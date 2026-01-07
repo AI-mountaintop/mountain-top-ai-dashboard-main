@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 import { generateTrailmap } from './services/trailmapService.js';
 import { generateActionItems } from './services/actionItemsService.js';
 import { listFilesInFolder, deleteFileFromDrive, extractFileIdFromUrl } from './services/google/driveService.js';
@@ -20,7 +21,7 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// CORS configuration - allow multiple development origins
+// CORS configuration - allow multiple development origins and Railway domains
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   'http://localhost:5173',
@@ -31,12 +32,20 @@ const allowedOrigins = [
   'http://127.0.0.1:3000'
 ].filter(Boolean); // Remove undefined values
 
+// Allow Railway domains (up.railway.app)
+const isRailwayDomain = (origin) => {
+  return origin && origin.includes('.up.railway.app');
+};
+
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else if (isRailwayDomain(origin)) {
+      // Allow Railway domains
       callback(null, true);
     } else {
       // In development, allow all localhost origins
@@ -432,6 +441,17 @@ app.get('/api/auth/google/status', async (req, res) => {
     });
   }
 });
+
+// Serve static files from the React app build (for production/Railway)
+// This must be AFTER all API routes
+const distPath = join(__dirname, '..', 'dist');
+if (existsSync(distPath)) {
+  app.use(express.static(distPath));
+  // Handle React routing - return all requests to React app
+  app.get('*', (req, res) => {
+    res.sendFile(join(distPath, 'index.html'));
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
