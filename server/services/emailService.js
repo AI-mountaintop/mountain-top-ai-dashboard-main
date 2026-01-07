@@ -6,16 +6,19 @@ import nodemailer from 'nodemailer';
  */
 export async function sendEmail({ to, subject, htmlContent }) {
   try {
-    // Option 1: Using Gmail API (requires OAuth2 or service account with domain-wide delegation)
-    // For now, we'll use nodemailer with Gmail SMTP as it's simpler
+    console.log(`[Email] Attempting to send email to: ${to}`);
+    console.log(`[Email] Subject: ${subject}`);
     
     // Check if we have Gmail credentials
     const gmailUser = process.env.GMAIL_USER;
     const gmailAppPassword = process.env.GMAIL_APP_PASSWORD;
 
     if (!gmailUser || !gmailAppPassword) {
+      console.error('[Email] Gmail credentials not configured');
       throw new Error('Gmail credentials not configured. Please set GMAIL_USER and GMAIL_APP_PASSWORD in .env');
     }
+
+    console.log(`[Email] Using Gmail account: ${gmailUser}`);
 
     // Create transporter using Gmail SMTP
     const transporter = nodemailer.createTransport({
@@ -26,6 +29,11 @@ export async function sendEmail({ to, subject, htmlContent }) {
       }
     });
 
+    // Verify transporter configuration
+    console.log('[Email] Verifying SMTP connection...');
+    await transporter.verify();
+    console.log('[Email] SMTP connection verified');
+
     // Send email
     const mailOptions = {
       from: gmailUser,
@@ -34,7 +42,9 @@ export async function sendEmail({ to, subject, htmlContent }) {
       html: htmlContent
     };
 
+    console.log('[Email] Sending email...');
     const info = await transporter.sendMail(mailOptions);
+    console.log(`[Email] Email sent successfully. Message ID: ${info.messageId}`);
 
     return {
       success: true,
@@ -42,7 +52,7 @@ export async function sendEmail({ to, subject, htmlContent }) {
       response: info.response
     };
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error(`[Email] Failed to send email: ${error.message}`);
     throw new Error(`Failed to send email: ${error.message}`);
   }
 }

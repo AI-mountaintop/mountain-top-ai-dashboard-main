@@ -76,7 +76,7 @@ export async function createGoogleDoc({ meetingName, htmlContent, businessOvervi
       throw new Error('Failed to create document: no document ID returned');
     }
 
-    console.log(`✅ Google Doc created successfully: ${documentId}`);
+    console.log(`Google Doc created successfully: ${documentId}`);
 
     return {
       documentId,

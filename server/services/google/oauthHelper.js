@@ -77,6 +77,16 @@ export async function getTokensFromCode(code) {
 async function saveTokens(tokens) {
   try {
     await fs.writeFile(TOKEN_PATH, JSON.stringify(tokens, null, 2));
+    console.log('✓ Tokens saved to tokens.json');
+    
+    // Also log for Railway environment variables
+    if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT) {
+      console.log('\n=== IMPORTANT: Add these to Railway Environment Variables ===');
+      console.log(`GOOGLE_OAUTH_ACCESS_TOKEN=${tokens.access_token}`);
+      console.log(`GOOGLE_OAUTH_REFRESH_TOKEN=${tokens.refresh_token}`);
+      console.log(`GOOGLE_OAUTH_TOKEN_EXPIRY=${tokens.expiry_date}`);
+      console.log('===============================================================\n');
+    }
   } catch (error) {
     console.error('Error saving tokens:', error);
     throw error;
@@ -84,11 +94,25 @@ async function saveTokens(tokens) {
 }
 
 /**
- * Load tokens from file
+ * Load tokens from file or environment variables
  */
 async function loadTokens() {
+  // First try environment variables (for production/Railway)
+  if (process.env.GOOGLE_OAUTH_REFRESH_TOKEN) {
+    console.log('Loading OAuth tokens from environment variables');
+    return {
+      access_token: process.env.GOOGLE_OAUTH_ACCESS_TOKEN,
+      refresh_token: process.env.GOOGLE_OAUTH_REFRESH_TOKEN,
+      token_type: 'Bearer',
+      expiry_date: parseInt(process.env.GOOGLE_OAUTH_TOKEN_EXPIRY || '0'),
+      scope: 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/documents'
+    };
+  }
+  
+  // Fall back to file (for local development)
   try {
     const content = await fs.readFile(TOKEN_PATH, 'utf8');
+    console.log('Loading OAuth tokens from tokens.json file');
     return JSON.parse(content);
   } catch (error) {
     if (error.code === 'ENOENT') {

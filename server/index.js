@@ -319,21 +319,32 @@ app.get('/api/action-items/progress/:jobId', (req, res) => {
 // Send action items email endpoint (replaces n8n webhook d726ee80-72d0-4cba-bb9d-4cdbed81be64)
 app.post('/api/action-items/send-email', async (req, res) => {
   try {
+    console.log('[API] Received email send request');
     const { meeting_name, html_content, email } = req.body;
 
-    if (!email || !html_content || !meeting_name) {
+    console.log(`[API] Email to: ${email}`);
+    console.log(`[API] Meeting name: ${meeting_name}`);
+    console.log(`[API] HTML content length: ${html_content?.length || 0} characters`);
+
+    if (!email || !html_content) {
+      console.error('[API] Missing required fields (email or html_content)');
       return res.status(400).json({ 
-        error: 'email, html_content, and meeting_name are required' 
+        error: 'email and html_content are required' 
       });
     }
 
+    // Use default meeting name if not provided
+    const finalMeetingName = meeting_name || 'Meeting Action Items';
+
     // Send email
+    console.log('[API] Calling sendEmail function...');
     const result = await sendEmail({
       to: email,
-      subject: `Meeting action items for :- ${meeting_name}`,
+      subject: `Meeting action items for :- ${finalMeetingName}`,
       htmlContent: html_content
     });
 
+    console.log('[API] Email sent successfully');
     res.json({
       success: true,
       message: 'Email sent successfully',
@@ -342,7 +353,7 @@ app.post('/api/action-items/send-email', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('[API] Error sending email:', error.message);
     res.status(500).json({ 
       error: 'Failed to send email',
       message: error.message 
