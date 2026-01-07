@@ -57,6 +57,9 @@ coverage
 *.temp
 .cache
 
+# OAuth tokens (contains sensitive access tokens)
+tokens.json
+
 # Package manager lock files (uncomment if you don't want to commit them)
 # package-lock.json
 # yarn.lock

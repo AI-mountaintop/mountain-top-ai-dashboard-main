@@ -4,11 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Send, BarChart3, RefreshCw, Calendar, Link as LinkIcon, ExternalLink } from "lucide-react";
+import { FileText, Send, BarChart3, RefreshCw, Calendar, Link as LinkIcon, ExternalLink, CheckCircle2, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
+import { Progress } from "@/components/ui/progress";
 
 interface DigitalTrailmapItem {
     id: string;
@@ -20,13 +23,27 @@ interface DigitalTrailmapItem {
 }
 
 const DigitalTrailmap = () => {
+    const [inputType, setInputType] = useState<"link" | "transcript">("link");
     const [meetingLink, setMeetingLink] = useState("");
+    const [meetingTranscript, setMeetingTranscript] = useState("");
     const [isGenerating, setIsGenerating] = useState(false);
     const [activeTab, setActiveTab] = useState("input");
 
     // History state
     const [history, setHistory] = useState<DigitalTrailmapItem[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+    // Progress state
+    const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+    const [progress, setProgress] = useState<{
+        status: string;
+        currentStep: number;
+        totalSteps: number;
+        steps: Array<{ name: string; completed: boolean }>;
+        percentage: number;
+        error?: string;
+        result?: any;
+    } | null>(null);
 
     const fetchHistory = async () => {
         setIsLoadingHistory(true);
@@ -47,52 +64,153 @@ const DigitalTrailmap = () => {
         }
     };
 
+    const handleDelete = async (item: DigitalTrailmapItem) => {
+        if (!confirm(`Are you sure you want to delete "${item.meeting_name}"? This will permanently delete the trailmap and report from Google Drive and Supabase.`)) {
+            return;
+        }
+
+        try {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+            const response = await fetch(`${apiUrl}/api/trailmaps/${item.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    trailmapLink: item.trailmap_link,
+                    reportLink: item.report_link
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || 'Failed to delete trailmap');
+            }
+
+            toast.success("Trailmap deleted successfully");
+            
+            // Refresh the history list
+            fetchHistory();
+        } catch (error) {
+            console.error("Error deleting trailmap:", error);
+            toast.error(error instanceof Error ? error.message : "Failed to delete trailmap");
+        }
+    };
+
     // Load history when component mounts
     useEffect(() => {
         fetchHistory();
     }, []);
 
-    const handleGenerate = async () => {
-        if (!meetingLink.trim()) {
-            toast.error("Please enter a Meeting Link");
-            return;
-        }
+    // Poll for progress updates
+    useEffect(() => {
+        if (!currentJobId) return;
 
-        // Basic URL validation
-        try {
-            new URL(meetingLink);
-        } catch {
-            toast.error("Please enter a valid URL");
-            return;
+        const pollProgress = async () => {
+            try {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+                const response = await fetch(`${apiUrl}/api/trailmap/progress/${currentJobId}`);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch progress');
+                }
+
+                const progressData = await response.json();
+                setProgress(progressData);
+
+                // If completed or failed, stop polling and refresh history
+                if (progressData.status === 'completed') {
+                    setIsGenerating(false);
+                    setCurrentJobId(null);
+                    setProgress(null);
+                    
+                    // Show success message with details
+                    const hasTrailmap = progressData.result?.trailmapLink;
+                    const hasReport = progressData.result?.reportLink;
+                    let message = "Trailmap generated successfully!";
+                    if (!hasTrailmap && !hasReport) {
+                        message += " (Note: Documents may not have been created - check server logs)";
+                    }
+                    toast.success(message);
+                    
+                    // Refresh history immediately and again after a delay
+                    fetchHistory();
+                    setTimeout(fetchHistory, 2000);
+                    setTimeout(fetchHistory, 5000);
+                } else if (progressData.status === 'failed') {
+                    setIsGenerating(false);
+                    setCurrentJobId(null);
+                    setProgress(null);
+                    toast.error(progressData.error || "Failed to generate trailmap");
+                    // Still refresh history in case partial data was saved
+                    setTimeout(fetchHistory, 1000);
+                }
+            } catch (error) {
+                console.error("Error polling progress:", error);
+            }
+        };
+
+        // Poll immediately, then every 1 second
+        pollProgress();
+        const interval = setInterval(pollProgress, 1000);
+
+        return () => clearInterval(interval);
+    }, [currentJobId]);
+
+    const handleGenerate = async () => {
+        if (inputType === "link") {
+            if (!meetingLink.trim()) {
+                toast.error("Please enter a Meeting Link");
+                return;
+            }
+
+            // Basic URL validation
+            try {
+                new URL(meetingLink);
+            } catch {
+                toast.error("Please enter a valid URL");
+                return;
+            }
+        } else {
+            if (!meetingTranscript.trim()) {
+                toast.error("Please enter a Meeting Transcript");
+                return;
+            }
         }
 
         setIsGenerating(true);
+        setProgress(null);
 
         try {
-            const response = await fetch("https://mountaintop.app.n8n.cloud/webhook/1ba00028-090f-4db8-bca9-c9adc8557cc1", {
+            // Use local backend server instead of n8n webhook
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+            const response = await fetch(`${apiUrl}/api/trailmap/generate`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    meetingLink: meetingLink.trim(),
+                    meetingLink: inputType === "link" ? meetingLink.trim() : undefined,
+                    meetingTranscript: inputType === "transcript" ? meetingTranscript.trim() : undefined,
                 }),
             });
 
             if (!response.ok) {
-                throw new Error("Failed to generate trailmap");
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || "Failed to generate trailmap");
             }
 
-            toast.success("Trailmap generation started successfully!");
+            const result = await response.json();
+            
+            // Immediately switch to output tab and start polling
+            setCurrentJobId(result.jobId);
             setActiveTab("output");
             setMeetingLink("");
-            // Refresh history to show the newly generated trailmap (might take time to appear)
-            setTimeout(fetchHistory, 5000);
+            setMeetingTranscript("");
 
         } catch (error) {
             console.error("Error generating trailmap:", error);
             toast.error("Failed to generate trailmap. Please try again.");
-        } finally {
             setIsGenerating(false);
         }
     };
@@ -124,20 +242,51 @@ const DigitalTrailmap = () => {
                                         Meeting Information
                                     </CardTitle>
                                     <CardDescription>
-                                        Provide the meeting link to generate a digital trailmap
+                                        Provide either a meeting link or meeting transcript to generate a digital trailmap
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="meeting-link">Meeting Link</Label>
-                                        <Input
-                                            id="meeting-link"
-                                            type="url"
-                                            placeholder="https://meetgeek.ai/recording/..."
-                                            value={meetingLink}
-                                            onChange={(e) => setMeetingLink(e.target.value)}
-                                        />
+                                    <div className="space-y-3">
+                                        <Label>Input Type</Label>
+                                        <RadioGroup value={inputType} onValueChange={(value) => setInputType(value as "link" | "transcript")}>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="link" id="link" />
+                                                <Label htmlFor="link" className="font-normal cursor-pointer">
+                                                    Meeting Link
+                                                </Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="transcript" id="transcript" />
+                                                <Label htmlFor="transcript" className="font-normal cursor-pointer">
+                                                    Meeting Transcript
+                                                </Label>
+                                            </div>
+                                        </RadioGroup>
                                     </div>
+
+                                    {inputType === "link" ? (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="meeting-link">Meeting Link</Label>
+                                            <Input
+                                                id="meeting-link"
+                                                type="url"
+                                                placeholder="https://meetgeek.ai/recording/..."
+                                                value={meetingLink}
+                                                onChange={(e) => setMeetingLink(e.target.value)}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="meeting-transcript">Meeting Transcript</Label>
+                                            <Textarea
+                                                id="meeting-transcript"
+                                                placeholder="Paste the meeting transcript here..."
+                                                value={meetingTranscript}
+                                                onChange={(e) => setMeetingTranscript(e.target.value)}
+                                                className="min-h-[200px]"
+                                            />
+                                        </div>
+                                    )}
 
                                     <Button
                                         onClick={handleGenerate}
@@ -152,6 +301,43 @@ const DigitalTrailmap = () => {
                         </TabsContent>
 
                         <TabsContent value="output" className="space-y-4">
+                            {/* Progress Card - Show when generating */}
+                            {isGenerating && progress && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Generating Trailmap...</CardTitle>
+                                        <CardDescription>
+                                            Please wait while we generate your digital trailmap
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-muted-foreground">Progress</span>
+                                                <span className="font-medium">{progress.percentage}%</span>
+                                            </div>
+                                            <Progress value={progress.percentage} className="h-2" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            {progress.steps.map((step, index) => (
+                                                <div key={index} className="flex items-center gap-3 text-sm">
+                                                    {step.completed ? (
+                                                        <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                                                    ) : index === progress.currentStep ? (
+                                                        <Loader2 className="h-4 w-4 text-primary animate-spin flex-shrink-0" />
+                                                    ) : (
+                                                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground flex-shrink-0" />
+                                                    )}
+                                                    <span className={step.completed ? "text-muted-foreground line-through" : index === progress.currentStep ? "font-medium" : "text-muted-foreground"}>
+                                                        {step.name}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+
                             <Card>
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <div>
@@ -208,6 +394,14 @@ const DigitalTrailmap = () => {
                                                                     </a>
                                                                 </Button>
                                                             )}
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="sm"
+                                                                onClick={() => handleDelete(item)}
+                                                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
                                                         </div>
                                                     </div>
                                                 </div>

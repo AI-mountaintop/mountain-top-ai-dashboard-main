@@ -5,10 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Send, BarChart3, RefreshCw, Calendar, Link as LinkIcon, ExternalLink, Mail, X } from "lucide-react";
+import { FileText, Send, BarChart3, RefreshCw, Calendar, Link as LinkIcon, ExternalLink, Mail, X, CheckCircle2, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
+import { Progress } from "@/components/ui/progress";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
 import {
     Dialog,
     DialogContent,
@@ -17,6 +20,17 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface MeetingActionItem {
     id: string;
@@ -28,13 +42,27 @@ interface MeetingActionItem {
 }
 
 const MeetingActions = () => {
+    const [inputType, setInputType] = useState<"link" | "transcript">("link");
     const [meetGeekUrl, setMeetGeekUrl] = useState("");
+    const [meetingTranscript, setMeetingTranscript] = useState("");
     const [isGenerating, setIsGenerating] = useState(false);
     const [activeTab, setActiveTab] = useState("input");
 
     // History state
     const [history, setHistory] = useState<MeetingActionItem[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+    // Progress state
+    const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+    const [progress, setProgress] = useState<{
+        status: string;
+        currentStep: number;
+        totalSteps: number;
+        steps: Array<{ name: string; completed: boolean }>;
+        percentage: number;
+        error?: string;
+        result?: any;
+    } | null>(null);
 
     // Modal state
     const [selectedMeeting, setSelectedMeeting] = useState<MeetingActionItem | null>(null);
@@ -66,49 +94,126 @@ const MeetingActions = () => {
         fetchHistory();
     }, []);
 
+    // Poll for progress updates
+    useEffect(() => {
+        if (!currentJobId) return;
+
+        const pollProgress = async () => {
+            try {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+                const response = await fetch(`${apiUrl}/api/action-items/progress/${currentJobId}`);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch progress');
+                }
+
+                const progressData = await response.json();
+                setProgress(progressData);
+
+                // If completed or failed, stop polling and refresh history
+                if (progressData.status === 'completed') {
+                    setIsGenerating(false);
+                    setCurrentJobId(null);
+                    setProgress(null);
+                    
+                    toast.success("Action items generated successfully!");
+                    
+                    // Refresh history immediately and again after a delay
+                    fetchHistory();
+                    setTimeout(fetchHistory, 2000);
+                    setTimeout(fetchHistory, 5000);
+                } else if (progressData.status === 'failed') {
+                    setIsGenerating(false);
+                    setCurrentJobId(null);
+                    setProgress(null);
+                    toast.error(progressData.error || "Failed to generate action items");
+                    // Still refresh history in case partial data was saved
+                    setTimeout(fetchHistory, 1000);
+                }
+            } catch (error) {
+                console.error("Error polling progress:", error);
+                // Don't show error toast for polling errors - just log it
+            }
+        };
+
+        // Poll immediately, then every 2 seconds
+        pollProgress();
+        const interval = setInterval(pollProgress, 2000);
+
+        return () => clearInterval(interval);
+    }, [currentJobId]);
+
     const handleGenerate = async () => {
-        if (!meetGeekUrl.trim()) {
-            toast.error("Please enter a MeetGeek URL");
-            return;
+        // Validate input based on type
+        if (inputType === "link") {
+            if (!meetGeekUrl.trim()) {
+                toast.error("Please enter a MeetGeek URL");
+                return;
+            }
+
+            // Basic URL validation
+            try {
+                new URL(meetGeekUrl);
+            } catch {
+                toast.error("Please enter a valid URL");
+                return;
+            }
+        } else {
+            if (!meetingTranscript.trim()) {
+                toast.error("Please enter a meeting transcript");
+                return;
+            }
         }
 
-        // Basic URL validation
-        try {
-            new URL(meetGeekUrl);
-        } catch {
-            toast.error("Please enter a valid URL");
-            return;
-        }
-
+        // Store values before clearing
+        const urlToProcess = inputType === "link" ? meetGeekUrl.trim() : "";
+        const transcriptToProcess = inputType === "transcript" ? meetingTranscript.trim() : "";
+        
+        // Immediately switch to output tab and clear input
+        setActiveTab("output");
+        setMeetGeekUrl("");
+        setMeetingTranscript("");
         setIsGenerating(true);
+        setProgress(null);
 
         try {
-            const response = await fetch("https://mountaintop.app.n8n.cloud/webhook/action-items", {
+            // Use local backend server instead of n8n webhook
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+            const response = await fetch(`${apiUrl}/api/action-items/generate`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    meetGeekUrl: meetGeekUrl.trim(),
+                    meetGeekUrl: urlToProcess || undefined,
+                    meetingTranscript: transcriptToProcess || undefined,
                 }),
             });
 
             if (!response.ok) {
-                throw new Error("Failed to generate action items");
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || "Failed to generate action items");
             }
 
-            toast.success("Action items generation started");
-            setActiveTab("output");
-            setMeetGeekUrl("");
-            // Refresh history to show the newly generated action items
-            // Note: It might take some time for the file to appear, so immediate refresh might not show it yet
-            setTimeout(fetchHistory, 5000);
+            const result = await response.json();
+            
+            // Set job ID to start polling
+            if (result.jobId) {
+                setCurrentJobId(result.jobId);
+                toast.success("Action items generation started");
+            } else {
+                // Fallback if jobId is not returned
+                toast.success("Action items generation started successfully");
+                setTimeout(fetchHistory, 2000);
+                setIsGenerating(false);
+            }
 
         } catch (error) {
             console.error("Error generating action items:", error);
             toast.error("Failed to generate action items. Please try again.");
-        } finally {
             setIsGenerating(false);
+            // Switch back to input tab on error so user can try again
+            setActiveTab("input");
         }
     };
 
@@ -128,7 +233,9 @@ const MeetingActions = () => {
         setIsSendingEmail(true);
 
         try {
-            const response = await fetch("https://mountaintop.app.n8n.cloud/webhook/d726ee80-72d0-4cba-bb9d-4cdbed81be64", {
+            // Use local backend server instead of n8n webhook
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+            const response = await fetch(`${apiUrl}/api/action-items/send-email`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -141,9 +248,11 @@ const MeetingActions = () => {
             });
 
             if (!response.ok) {
-                throw new Error("Failed to send email");
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || "Failed to send email");
             }
 
+            const result = await response.json();
             toast.success(`Email sent to ${emailToSend}`);
             // Optional: Close modal after success
             // setIsModalOpen(false); 
@@ -152,6 +261,33 @@ const MeetingActions = () => {
             toast.error("Failed to send email. Please try again.");
         } finally {
             setIsSendingEmail(false);
+        }
+    };
+
+    const handleDeleteActionItem = async (id: string, googleDriveLink: string | null) => {
+        setIsLoadingHistory(true);
+        try {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+            const response = await fetch(`${apiUrl}/api/action-items/${id}`, {
+                method: "DELETE",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ googleDriveLink }), // Pass link for Drive deletion
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || "Failed to delete action item");
+            }
+
+            toast.success("Action item deleted successfully!");
+            fetchHistory(); // Refresh the list
+        } catch (error) {
+            console.error("Error deleting action item:", error);
+            toast.error("Failed to delete action item. Please try again.");
+        } finally {
+            setIsLoadingHistory(false);
         }
     };
 
@@ -182,34 +318,118 @@ const MeetingActions = () => {
                                         Meeting Information
                                     </CardTitle>
                                     <CardDescription>
-                                        Provide the MeetGeek recording URL to generate action items
+                                        Provide either a MeetGeek recording URL or meeting transcript to generate action items
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="meetgeek-url">MeetGeek URL</Label>
-                                        <Input
-                                            id="meetgeek-url"
-                                            type="url"
-                                            placeholder="https://meetgeek.ai/recording/..."
-                                            value={meetGeekUrl}
-                                            onChange={(e) => setMeetGeekUrl(e.target.value)}
-                                        />
+                                    <div className="space-y-3">
+                                        <Label>Input Type</Label>
+                                        <RadioGroup value={inputType} onValueChange={(value) => setInputType(value as "link" | "transcript")}>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="link" id="link" />
+                                                <Label htmlFor="link" className="font-normal cursor-pointer">
+                                                    Meeting Link
+                                                </Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="transcript" id="transcript" />
+                                                <Label htmlFor="transcript" className="font-normal cursor-pointer">
+                                                    Meeting Transcript
+                                                </Label>
+                                            </div>
+                                        </RadioGroup>
                                     </div>
+
+                                    {inputType === "link" ? (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="meetgeek-url">MeetGeek URL</Label>
+                                            <Input
+                                                id="meetgeek-url"
+                                                type="url"
+                                                placeholder="https://meetgeek.ai/recording/..."
+                                                value={meetGeekUrl}
+                                                onChange={(e) => setMeetGeekUrl(e.target.value)}
+                                                disabled={isGenerating}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="meeting-transcript">Meeting Transcript</Label>
+                                            <Textarea
+                                                id="meeting-transcript"
+                                                placeholder="Paste the meeting transcript here..."
+                                                value={meetingTranscript}
+                                                onChange={(e) => setMeetingTranscript(e.target.value)}
+                                                className="min-h-[200px]"
+                                                disabled={isGenerating}
+                                            />
+                                        </div>
+                                    )}
 
                                     <Button
                                         onClick={handleGenerate}
                                         disabled={isGenerating}
                                         className="w-full"
                                     >
-                                        <Send className="h-4 w-4 mr-2" />
-                                        {isGenerating ? "Generating..." : "Generate Action Items"}
+                                        {isGenerating ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                Generating...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Send className="h-4 w-4 mr-2" />
+                                                Generate Action Items
+                                            </>
+                                        )}
                                     </Button>
                                 </CardContent>
                             </Card>
                         </TabsContent>
 
                         <TabsContent value="output" className="space-y-4">
+                            {/* Progress Card - Show when generating */}
+                            {(isGenerating || progress) && (
+                                <Card className="bg-muted/50">
+                                    <CardHeader>
+                                        <CardTitle>Generation Progress</CardTitle>
+                                        <CardDescription>
+                                            Action items are being generated. Please wait...
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm font-medium">Progress</span>
+                                                <span className="text-sm text-muted-foreground">{progress?.percentage || 0}%</span>
+                                            </div>
+                                            <Progress value={progress?.percentage || 0} className="h-2" />
+                                            <div className="space-y-2 mt-4">
+                                                {progress?.steps?.map((step, index) => (
+                                                    <div key={index} className="flex items-center gap-2 text-sm">
+                                                        {step.completed ? (
+                                                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                        ) : progress.currentStep === index ? (
+                                                            <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                                                        ) : (
+                                                            <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+                                                        )}
+                                                        <span className={step.completed ? "text-foreground" : progress.currentStep === index ? "text-primary font-medium" : "text-muted-foreground"}>
+                                                            {step.name}
+                                                        </span>
+                                                    </div>
+                                                )) || (
+                                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                        <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                                                        <span>Initializing generation...</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+
                             <Card>
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <div>
@@ -265,6 +485,28 @@ const MeetingActions = () => {
                                                                     </a>
                                                                 </Button>
                                                             )}
+                                                            <AlertDialog>
+                                                                <AlertDialogTrigger asChild>
+                                                                    <Button variant="destructive" size="icon" className="h-8 w-8">
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </AlertDialogTrigger>
+                                                                <AlertDialogContent>
+                                                                    <AlertDialogHeader>
+                                                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                                                        <AlertDialogDescription>
+                                                                            This action cannot be undone. This will permanently delete your action item
+                                                                            record from Supabase and the associated document from Google Drive.
+                                                                        </AlertDialogDescription>
+                                                                    </AlertDialogHeader>
+                                                                    <AlertDialogFooter>
+                                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                        <AlertDialogAction onClick={() => handleDeleteActionItem(item.id, item.google_drive_link)}>
+                                                                            Continue
+                                                                        </AlertDialogAction>
+                                                                    </AlertDialogFooter>
+                                                                </AlertDialogContent>
+                                                            </AlertDialog>
                                                         </div>
                                                     </div>
                                                 </div>
