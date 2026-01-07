@@ -453,7 +453,8 @@ if (existsSync(distPath)) {
   });
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Server accessible on all network interfaces (0.0.0.0:${PORT})`);
 });
 
