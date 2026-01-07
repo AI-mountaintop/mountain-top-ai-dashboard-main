@@ -8,212 +8,75 @@ async function getDriveClient() {
 }
 
 /**
- * Create a Google Doc with HTML content
+ * Create a Google Doc with HTML content using multipart upload
  */
 export async function createGoogleDoc({ meetingName, htmlContent, businessOverview, projectBrief, marketingPlan, folderId }) {
   try {
     // Get auth client (OAuth2 only)
     const auth = await getGoogleAuth();
 
-    const drive = google.drive({ version: 'v3', auth });
-    const docs = google.docs({ version: 'v1', auth });
-
-    // Determine parent folder(s)
-    // If folderId is explicitly provided and not null, use it
-    // If folderId is undefined, fall back to GOOGLE_DRIVE_TRAILMAP_FOLDER_ID
-    // If folderId is explicitly null, create in root (no parents)
-    let parents = [];
+    // Determine parent folder
+    let parentFolderId = null;
     if (folderId !== undefined) {
-      // folderId was explicitly provided
       if (folderId !== null) {
-        parents = [folderId];
+        parentFolderId = folderId;
       }
-      // else: folderId is null, so parents stays empty (create in root)
     } else {
-      // folderId was not provided, use trailmap folder as fallback
       if (process.env.GOOGLE_DRIVE_TRAILMAP_FOLDER_ID) {
-        parents = [process.env.GOOGLE_DRIVE_TRAILMAP_FOLDER_ID];
+        parentFolderId = process.env.GOOGLE_DRIVE_TRAILMAP_FOLDER_ID;
       }
     }
-    // If parents is empty array, document will be created in root
 
-    // Create an empty Google Doc first
-    const createResponse = await drive.files.create({
-      requestBody: {
-        name: `${meetingName} - report`,
-        mimeType: 'application/vnd.google-apps.document',
-        ...(parents.length > 0 && { parents })
-      }
+    // Build metadata
+    const metadata = {
+      name: `${meetingName} - report`,
+      mimeType: 'application/vnd.google-apps.document'
+    };
+    
+    if (parentFolderId) {
+      metadata.parents = [parentFolderId];
+    }
+
+    // Create multipart body with boundary
+    const boundary = 'foo_bar_baz';
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const closeDelimiter = `\r\n--${boundary}--`;
+
+    const multipartBody = 
+      delimiter +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(metadata) +
+      delimiter +
+      'Content-Type: text/html; charset=UTF-8\r\n\r\n' +
+      htmlContent +
+      closeDelimiter;
+
+    // Get access token
+    const accessToken = await auth.getAccessToken();
+
+    // Make direct HTTP request to Google Drive API
+    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken.token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`
+      },
+      body: multipartBody
     });
 
-    const documentId = createResponse.data.id;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Failed to create Google Doc: ${response.statusText} - ${JSON.stringify(errorData)}`);
+    }
+
+    const result = await response.json();
+    const documentId = result.id;
 
     if (!documentId) {
       throw new Error('Failed to create document: no document ID returned');
     }
 
-    // Convert HTML to structured Google Docs format
-    // Extract text content and preserve structure (headings, paragraphs, lists)
-    if (htmlContent) {
-      try {
-        // Remove script and style tags completely
-        let cleanHtml = htmlContent.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
-        cleanHtml = cleanHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-        
-        // Extract body content if full HTML document
-        const bodyMatch = cleanHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-        if (bodyMatch) {
-          cleanHtml = bodyMatch[1];
-        }
-        
-        // Build requests array for structured content
-        const requests = [];
-        let currentIndex = 1;
-        
-        // Helper function to extract text from HTML element
-        const extractText = (html) => {
-          return html
-            .replace(/<[^>]+>/g, '') // Remove all HTML tags
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/\s+/g, ' ') // Normalize whitespace
-            .trim();
-        };
-        
-        // Process headings (h1, h2, h3)
-        const headingRegex = /<(h[1-3])[^>]*>([\s\S]*?)<\/h[1-3]>/gi;
-        let headingMatch;
-        let lastIndex = 0;
-        const processedText = [];
-        
-        // First, extract all headings with their positions
-        const headings = [];
-        while ((headingMatch = headingRegex.exec(cleanHtml)) !== null) {
-          headings.push({
-            tag: headingMatch[1],
-            text: extractText(headingMatch[2]),
-            position: headingMatch.index
-          });
-        }
-        
-        // Process content in order
-        let htmlPosition = 0;
-        
-        // Process headings and content between them
-        headings.forEach((heading, idx) => {
-          // Get text before this heading
-          const beforeHtml = cleanHtml.substring(htmlPosition, heading.position);
-          const beforeText = extractText(beforeHtml);
-          if (beforeText) {
-            processedText.push({ type: 'paragraph', text: beforeText });
-          }
-          
-          // Add heading
-          processedText.push({ type: 'heading', level: parseInt(heading.tag[1]), text: heading.text });
-          htmlPosition = headingRegex.lastIndex;
-        });
-        
-        // Get remaining text after last heading
-        const remainingHtml = cleanHtml.substring(htmlPosition);
-        const remainingText = extractText(remainingHtml);
-        if (remainingText) {
-          processedText.push({ type: 'paragraph', text: remainingText });
-        }
-        
-        // If no headings found, process as plain text
-        if (processedText.length === 0) {
-          const plainText = extractText(cleanHtml);
-          if (plainText) {
-            processedText.push({ type: 'paragraph', text: plainText });
-          }
-        }
-        
-        // Build Google Docs API requests
-        processedText.forEach((item) => {
-          if (!item.text) return;
-          
-          const text = item.text + '\n';
-          
-          if (item.type === 'heading') {
-            // Insert heading text
-            requests.push({
-              insertText: {
-                location: { index: currentIndex },
-                text: text
-              }
-            });
-            
-            // Apply heading style
-            const endIndex = currentIndex + text.length - 1;
-            requests.push({
-              updateParagraphStyle: {
-                range: {
-                  startIndex: currentIndex,
-                  endIndex: endIndex
-                },
-                paragraphStyle: {
-                  namedStyleType: item.level === 1 ? 'HEADING_1' : item.level === 2 ? 'HEADING_2' : 'HEADING_3'
-                },
-                fields: 'namedStyleType'
-              }
-            });
-            
-            currentIndex = endIndex + 1;
-          } else {
-            // Insert paragraph text
-            requests.push({
-              insertText: {
-                location: { index: currentIndex },
-                text: text
-              }
-            });
-            currentIndex += text.length;
-          }
-        });
-        
-        // Execute all requests
-        if (requests.length > 0) {
-          await docs.documents.batchUpdate({
-            documentId: documentId,
-            requestBody: { requests }
-          });
-        }
-      } catch (docsError) {
-        console.warn('Warning: Could not insert formatted content, falling back to plain text:', docsError.message);
-        
-        // Fallback: simple text extraction
-        const plainText = htmlContent
-          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-          .replace(/<[^>]+>/g, '\n')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"')
-          .replace(/&#39;/g, "'")
-          .replace(/\n\s*\n\s*\n/g, '\n\n') // Remove excessive newlines
-          .trim();
-        
-        if (plainText) {
-          await docs.documents.batchUpdate({
-            documentId: documentId,
-            requestBody: {
-              requests: [{
-                insertText: {
-                  location: { index: 1 },
-                  text: plainText.substring(0, 1000000)
-                }
-              }]
-            }
-          });
-        }
-      }
-    }
+    console.log(`✅ Google Doc created successfully: ${documentId}`);
 
     return {
       documentId,

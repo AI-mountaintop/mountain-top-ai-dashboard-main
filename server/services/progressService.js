@@ -13,15 +13,15 @@ export function initProgress(jobId, type = 'trailmap') {
       currentStep: 0,
       totalSteps: 9,
       steps: [
-        { name: 'Fetching transcript from MeetGeek', completed: false },
-        { name: 'Generating meeting summary and extracting action items', completed: false },
-        { name: 'Consolidating action items', completed: false },
-        { name: 'Mapping tasks to transcript', completed: false },
-        { name: 'Refining action items', completed: false },
-        { name: 'Final consolidation with subtasks', completed: false },
-        { name: 'Generating HTML content', completed: false },
-        { name: 'Creating Google Doc', completed: false },
-        { name: 'Saving to database', completed: false }
+        { name: '📥 Fetching meeting transcript from MeetGeek...', completed: false },
+        { name: '🤖 AI analyzing meeting and extracting action items...', completed: false },
+        { name: '🔄 Consolidating and removing duplicate action items...', completed: false },
+        { name: '🔗 Mapping action items to transcript conversations...', completed: false },
+        { name: '✨ Refining action items with details and context...', completed: false },
+        { name: '📋 Creating final action items with subtasks...', completed: false },
+        { name: '🎨 Generating beautifully formatted HTML document...', completed: false },
+        { name: '📄 Creating Google Doc with tables and formatting...', completed: false },
+        { name: '💾 Saving to database for history...', completed: false }
       ],
       error: null,
       result: null,
@@ -34,15 +34,15 @@ export function initProgress(jobId, type = 'trailmap') {
       currentStep: 0,
       totalSteps: 9,
       steps: [
-        { name: 'Fetching transcript', completed: false },
-        { name: 'Generating business overview', completed: false },
-        { name: 'Generating project brief', completed: false },
-        { name: 'Generating marketing plan', completed: false },
-        { name: 'Generating project resources', completed: false },
-        { name: 'Generating HTML document', completed: false },
-        { name: 'Creating Google Doc', completed: false },
-        { name: 'Creating Google Slides', completed: false },
-        { name: 'Saving to database', completed: false }
+        { name: '📥 Fetching meeting transcript...', completed: false },
+        { name: '🏢 AI generating business overview...', completed: false },
+        { name: '📝 AI creating project brief...', completed: false },
+        { name: '📊 AI developing marketing plan...', completed: false },
+        { name: '🔧 AI compiling project resources...', completed: false },
+        { name: '🎨 Generating HTML document...', completed: false },
+        { name: '📄 Creating Google Doc...', completed: false },
+        { name: '📊 Creating Google Slides presentation...', completed: false },
+        { name: '💾 Saving to database...', completed: false }
       ],
       error: null,
       result: null,
@@ -86,7 +86,17 @@ export function setProgressStatus(jobId, status, error = null, result = null) {
  * Get progress for a job
  */
 export function getProgress(jobId) {
-  return progressStore.get(jobId) || null;
+  const progress = progressStore.get(jobId);
+  if (!progress) return null;
+  
+  // Calculate percentage based on completed steps
+  const completedSteps = progress.steps.filter(step => step.completed).length;
+  const percentage = Math.round((completedSteps / progress.totalSteps) * 100);
+  
+  return {
+    ...progress,
+    percentage
+  };
 }
 
 /**

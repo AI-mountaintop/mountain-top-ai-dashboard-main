@@ -19,61 +19,89 @@ function extractMeetingId(link) {
 }
 
 /**
- * Fetch meeting details
+ * Sleep helper for retry delays
  */
-async function fetchMeetingDetails(meetingId) {
-  try {
-    const response = await axios.get(`${MEETGEEK_API_BASE}/meetings/${meetingId}`, {
-      headers: {
-        'Authorization': `Bearer ${MEETGEEK_API_KEY}`
-      },
-      params: {
-        cursor: ''
-      }
-    });
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching meeting details:', error);
-    throw new Error(`Failed to fetch meeting details: ${error.message}`);
+/**
+ * Fetch meeting details with retry logic
+ */
+async function fetchMeetingDetails(meetingId, retries = 3) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await axios.get(`${MEETGEEK_API_BASE}/meetings/${meetingId}`, {
+        headers: {
+          'Authorization': `Bearer ${MEETGEEK_API_KEY}`
+        },
+        params: {
+          cursor: ''
+        }
+      });
+
+      return response.data;
+    } catch (error) {
+      // If rate limited (429), wait and retry
+      if (error.response?.status === 429 && attempt < retries - 1) {
+        const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
+        console.log(`⏳ Rate limited. Waiting ${waitTime/1000}s before retry ${attempt + 1}/${retries - 1}...`);
+        await sleep(waitTime);
+        continue;
+      }
+      
+      console.error('Error fetching meeting details:', error);
+      throw new Error(`Failed to fetch meeting details: ${error.response?.data?.message || error.message}`);
+    }
   }
 }
 
 /**
- * Fetch transcript with pagination
+ * Fetch transcript with pagination and retry logic
  */
-async function fetchTranscript(meetingId) {
+async function fetchTranscript(meetingId, retries = 3) {
   let allTranscripts = [];
   let cursor = '';
 
-  try {
-    do {
-      const response = await axios.get(
-        `${MEETGEEK_API_BASE}/meetings/${meetingId}/transcript`,
-        {
-          headers: {
-            'Authorization': `Bearer ${MEETGEEK_API_KEY}`
-          },
-          params: cursor ? { cursor } : {}
+  do {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const response = await axios.get(
+          `${MEETGEEK_API_BASE}/meetings/${meetingId}/transcript`,
+          {
+            headers: {
+              'Authorization': `Bearer ${MEETGEEK_API_KEY}`
+            },
+            params: cursor ? { cursor } : {}
+          }
+        );
+
+        const data = response.data;
+        
+        if (data.sentences && Array.isArray(data.sentences)) {
+          allTranscripts.push(...data.sentences);
+        } else if (data.transcript) {
+          allTranscripts.push(data);
         }
-      );
 
-      const data = response.data;
-      
-      if (data.sentences && Array.isArray(data.sentences)) {
-        allTranscripts.push(...data.sentences);
-      } else if (data.transcript) {
-        allTranscripts.push(data);
+        cursor = data.pagination?.next_cursor || '';
+        break; // Success, exit retry loop
+      } catch (error) {
+        // If rate limited (429), wait and retry
+        if (error.response?.status === 429 && attempt < retries - 1) {
+          const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
+          console.log(`⏳ Rate limited. Waiting ${waitTime/1000}s before retry ${attempt + 1}/${retries - 1}...`);
+          await sleep(waitTime);
+          continue;
+        }
+        
+        console.error('Error fetching transcript:', error);
+        throw new Error(`Failed to fetch transcript: ${error.response?.data?.message || error.message}`);
       }
+    }
+  } while (cursor);
 
-      cursor = data.pagination?.next_cursor || '';
-    } while (cursor);
-
-    return allTranscripts;
-  } catch (error) {
-    console.error('Error fetching transcript:', error);
-    throw new Error(`Failed to fetch transcript: ${error.message}`);
-  }
+  return allTranscripts;
 }
 
 /**
