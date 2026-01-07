@@ -447,14 +447,28 @@ app.get('/api/auth/google/status', async (req, res) => {
 const distPath = join(__dirname, '..', 'dist');
 if (existsSync(distPath)) {
   app.use(express.static(distPath));
-  // Handle React routing - return all requests to React app
-  app.get('*', (req, res) => {
+  // Handle React routing - return all requests to React app (except API routes)
+  app.get('*', (req, res, next) => {
+    // Don't serve index.html for API routes or health check
+    if (req.path.startsWith('/api/') || req.path === '/health') {
+      return next();
+    }
     res.sendFile(join(distPath, 'index.html'));
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Server accessible on all network interfaces (0.0.0.0:${PORT})`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Frontend URL: ${process.env.FRONTEND_URL || 'not set'}`);
+});
+
+// Handle server errors
+server.on('error', (error) => {
+  console.error('Server error:', error);
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use`);
+  }
 });
 
