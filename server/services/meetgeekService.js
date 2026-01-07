@@ -45,13 +45,16 @@ async function fetchMeetingDetails(meetingId, retries = 3) {
       // If rate limited (429), wait and retry
       if (error.response?.status === 429 && attempt < retries - 1) {
         const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
-        console.log(`⏳ Rate limited. Waiting ${waitTime/1000}s before retry ${attempt + 1}/${retries - 1}...`);
+        console.log(`[MeetGeek] Rate limited. Waiting ${waitTime/1000}s before retry ${attempt + 1}/${retries - 1}...`);
         await sleep(waitTime);
         continue;
       }
       
-      console.error('Error fetching meeting details:', error);
-      throw new Error(`Failed to fetch meeting details: ${error.response?.data?.message || error.message}`);
+      // Clean error logging
+      const errorMessage = error.response?.data?.message || error.message;
+      const statusCode = error.response?.status;
+      console.error(`[MeetGeek] Error fetching meeting details: ${statusCode ? `HTTP ${statusCode} - ` : ''}${errorMessage}`);
+      throw new Error(`Failed to fetch meeting details: ${errorMessage}`);
     }
   }
 }
@@ -90,13 +93,16 @@ async function fetchTranscript(meetingId, retries = 3) {
         // If rate limited (429), wait and retry
         if (error.response?.status === 429 && attempt < retries - 1) {
           const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
-          console.log(`⏳ Rate limited. Waiting ${waitTime/1000}s before retry ${attempt + 1}/${retries - 1}...`);
+          console.log(`[MeetGeek] Rate limited. Waiting ${waitTime/1000}s before retry ${attempt + 1}/${retries - 1}...`);
           await sleep(waitTime);
           continue;
         }
         
-        console.error('Error fetching transcript:', error);
-        throw new Error(`Failed to fetch transcript: ${error.response?.data?.message || error.message}`);
+        // Clean error logging
+        const errorMessage = error.response?.data?.message || error.message;
+        const statusCode = error.response?.status;
+        console.error(`[MeetGeek] Error fetching transcript: ${statusCode ? `HTTP ${statusCode} - ` : ''}${errorMessage}`);
+        throw new Error(`Failed to fetch transcript: ${errorMessage}`);
       }
     }
   } while (cursor);
@@ -132,8 +138,11 @@ function processTranscript(transcriptItems) {
  */
 export async function fetchTranscriptFromLink(meetingLink) {
   try {
+    console.log(`[MeetGeek] Fetching transcript from: ${meetingLink}`);
+    
     // Extract meeting ID
     const meetingId = extractMeetingId(meetingLink);
+    console.log(`[MeetGeek] Meeting ID: ${meetingId}`);
 
     // Fetch meeting details and transcript in parallel
     const [meetingDetails, transcriptItems] = await Promise.all([
@@ -143,6 +152,7 @@ export async function fetchTranscriptFromLink(meetingLink) {
 
     // Process transcript
     const processedTranscript = processTranscript(transcriptItems);
+    console.log(`[MeetGeek] Successfully fetched transcript (${processedTranscript.length} characters)`);
 
     return {
       transcript: processedTranscript,
@@ -150,7 +160,7 @@ export async function fetchTranscriptFromLink(meetingLink) {
       meetingId
     };
   } catch (error) {
-    console.error('Error in fetchTranscriptFromLink:', error);
+    console.error(`[MeetGeek] Failed to fetch transcript: ${error.message}`);
     throw error;
   }
 }
