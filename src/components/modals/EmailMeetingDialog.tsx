@@ -10,7 +10,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Mail, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -37,7 +36,10 @@ export const EmailMeetingDialog = ({
   const [subject, setSubject] = useState(`Meeting action items for :- ${meetingName}`);
   const [isSending, setIsSending] = useState(false);
 
-  const handleSend = async () => {
+  const handleSend = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
     if (!email.trim()) {
       toast.error('Please enter an email address');
       return;
@@ -87,16 +89,25 @@ export const EmailMeetingDialog = ({
     }
   };
 
-  const handleClose = () => {
+  const handleCancel = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (!isSending) {
       setEmail('');
       onClose();
     }
   };
 
+  const handleOpenChange = (open: boolean) => {
+    if (!open && !isSending) {
+      setEmail('');
+      onClose();
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[500px]">
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[500px]" onPointerDownOutside={(e) => isSending && e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="h-5 w-5 text-primary" />
@@ -150,13 +161,15 @@ export const EmailMeetingDialog = ({
 
         <DialogFooter>
           <Button
+            type="button"
             variant="outline"
-            onClick={handleClose}
+            onClick={handleCancel}
             disabled={isSending}
           >
             Cancel
           </Button>
           <Button
+            type="button"
             onClick={handleSend}
             disabled={isSending}
             className="min-w-[100px]"

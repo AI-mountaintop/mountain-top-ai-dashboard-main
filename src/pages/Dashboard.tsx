@@ -115,6 +115,20 @@ const Dashboard = () => {
         }
     };
 
+    const handleActivityClick = (activity: Activity) => {
+        switch (activity.type) {
+            case 'trailmap':
+                navigate('/digital-trailmap');
+                break;
+            case 'presales':
+                navigate(`/presales-summary/${activity.id}`);
+                break;
+            case 'meeting':
+                navigate(`/meeting-actions/${activity.id}`);
+                break;
+        }
+    };
+
     return (
         <div className="min-h-screen bg-background">
             <Sidebar />
@@ -125,105 +139,90 @@ const Dashboard = () => {
                         description="Overview of your AI-powered tools"
                     />
 
-                    {/* Stats Cards */}
-                    <div className="grid gap-6 md:grid-cols-3 mb-12">
-                        <Card className="border-border hover:border-primary/20 transition-all duration-200">
-                            <CardHeader className="pb-3">
-                                <div className="flex items-center justify-between">
-                                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                                        Digital Trailmap
-                                    </CardTitle>
-                                    <FileText className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-3xl font-semibold mb-1">
-                                    {isLoading ? "—" : stats.digitalTrailmaps}
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    Total created
-                                </p>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="border-border hover:border-primary/20 transition-all duration-200">
-                            <CardHeader className="pb-3">
-                                <div className="flex items-center justify-between">
-                                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                                        Pre-Sales Summary
-                                    </CardTitle>
-                                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-3xl font-semibold mb-1">
-                                    {isLoading ? "—" : stats.preSalesSummaries}
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    Total generated
-                                </p>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="border-border hover:border-primary/20 transition-all duration-200">
-                            <CardHeader className="pb-3">
-                                <div className="flex items-center justify-between">
-                                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                                        Meeting Actions
-                                    </CardTitle>
-                                    <Sparkles className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-3xl font-semibold mb-1">
-                                    {isLoading ? "—" : stats.meetingActions}
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    Total processed
-                                </p>
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    {/* Feature Cards */}
+                    {/* Combined Feature Cards with Stats */}
                     <div className="grid gap-6 md:grid-cols-3 mb-12">
                         <Card 
                             className="border-border hover:border-primary/20 transition-all duration-200 group cursor-pointer"
                             onClick={() => navigate('/digital-trailmap')}
                         >
-                            <CardHeader className="pb-4">
-                                <FileText className="h-5 w-5 text-muted-foreground mb-4 group-hover:text-primary transition-colors" />
-                                <CardTitle className="text-lg font-semibold mb-2">Digital Trailmap</CardTitle>
-                                <CardDescription className="text-sm leading-relaxed">
-                                    Generate comprehensive digital trailmaps from meeting transcripts
-                                </CardDescription>
+                            <CardHeader className="pb-2">
+                                <div className="flex items-center justify-between mb-4">
+                                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                                        Digital Trailmap
+                                    </CardTitle>
+                                    <FileText className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                                </div>
+                                <div className="text-3xl font-semibold mb-1">
+                                    {isLoading ? "—" : stats.digitalTrailmaps}
+                                </div>
+                                <p className="text-xs text-muted-foreground mb-4">
+                                    Total created
+                                </p>
                             </CardHeader>
+                            <CardContent className="pt-0 border-t border-border">
+                                <div className="pt-4">
+                                    <CardTitle className="text-base font-semibold mb-2 group-hover:text-primary transition-colors">Digital Trailmap</CardTitle>
+                                    <CardDescription className="text-sm leading-relaxed">
+                                        Generate comprehensive digital trailmaps from meeting transcripts
+                                    </CardDescription>
+                                </div>
+                            </CardContent>
                         </Card>
 
                         <Card 
                             className="border-border hover:border-primary/20 transition-all duration-200 group cursor-pointer"
                             onClick={() => navigate('/presales-summary')}
                         >
-                            <CardHeader className="pb-4">
-                                <BarChart3 className="h-5 w-5 text-muted-foreground mb-4 group-hover:text-primary transition-colors" />
-                                <CardTitle className="text-lg font-semibold mb-2">Pre-Sales Summary</CardTitle>
-                                <CardDescription className="text-sm leading-relaxed">
-                                    Create pre-sales call summaries from website analysis
-                                </CardDescription>
+                            <CardHeader className="pb-2">
+                                <div className="flex items-center justify-between mb-4">
+                                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                                        Pre-Sales Summary
+                                    </CardTitle>
+                                    <BarChart3 className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                                </div>
+                                <div className="text-3xl font-semibold mb-1">
+                                    {isLoading ? "—" : stats.preSalesSummaries}
+                                </div>
+                                <p className="text-xs text-muted-foreground mb-4">
+                                    Total generated
+                                </p>
                             </CardHeader>
+                            <CardContent className="pt-0 border-t border-border">
+                                <div className="pt-4">
+                                    <CardTitle className="text-base font-semibold mb-2 group-hover:text-primary transition-colors">Pre-Sales Summary</CardTitle>
+                                    <CardDescription className="text-sm leading-relaxed">
+                                        Create pre-sales call summaries from website analysis
+                                    </CardDescription>
+                                </div>
+                            </CardContent>
                         </Card>
 
                         <Card 
                             className="border-border hover:border-primary/20 transition-all duration-200 group cursor-pointer"
                             onClick={() => navigate('/meeting-actions')}
                         >
-                            <CardHeader className="pb-4">
-                                <Sparkles className="h-5 w-5 text-muted-foreground mb-4 group-hover:text-primary transition-colors" />
-                                <CardTitle className="text-lg font-semibold mb-2">Meeting Actions</CardTitle>
-                                <CardDescription className="text-sm leading-relaxed">
-                                    Convert meeting minutes into actionable items
-                                </CardDescription>
+                            <CardHeader className="pb-2">
+                                <div className="flex items-center justify-between mb-4">
+                                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                                        Meeting Actions
+                                    </CardTitle>
+                                    <Sparkles className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                                </div>
+                                <div className="text-3xl font-semibold mb-1">
+                                    {isLoading ? "—" : stats.meetingActions}
+                                </div>
+                                <p className="text-xs text-muted-foreground mb-4">
+                                    Total processed
+                                </p>
                             </CardHeader>
+                            <CardContent className="pt-0 border-t border-border">
+                                <div className="pt-4">
+                                    <CardTitle className="text-base font-semibold mb-2 group-hover:text-primary transition-colors">Meeting Actions</CardTitle>
+                                    <CardDescription className="text-sm leading-relaxed">
+                                        Convert meeting minutes into actionable items
+                                    </CardDescription>
+                                </div>
+                            </CardContent>
                         </Card>
                     </div>
 
@@ -237,7 +236,11 @@ const Dashboard = () => {
                             {recentActivity.length > 0 ? (
                                 <div className="space-y-4">
                                     {recentActivity.map((activity) => (
-                                        <div key={activity.id} className="flex items-center gap-4 py-3 border-b last:border-0 border-border">
+                                        <div 
+                                            key={activity.id} 
+                                            className="flex items-center gap-4 py-3 border-b last:border-0 border-border cursor-pointer hover:bg-muted/50 rounded-lg px-2 -mx-2 transition-colors"
+                                            onClick={() => handleActivityClick(activity)}
+                                        >
                                             <div className="flex-shrink-0">
                                                 {getActivityIcon(activity.type)}
                                             </div>
