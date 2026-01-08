@@ -60,8 +60,17 @@ export function updateProgress(jobId, stepIndex, completed = true) {
 
   if (stepIndex >= 0 && stepIndex < progress.steps.length) {
     progress.steps[stepIndex].completed = completed;
+    
+    // Find the first incomplete step to set as current
     if (completed) {
-      progress.currentStep = Math.max(progress.currentStep, stepIndex + 1);
+      let firstIncomplete = progress.steps.length;
+      for (let i = 0; i < progress.steps.length; i++) {
+        if (!progress.steps[i].completed) {
+          firstIncomplete = i;
+          break;
+        }
+      }
+      progress.currentStep = firstIncomplete;
     }
   }
 
