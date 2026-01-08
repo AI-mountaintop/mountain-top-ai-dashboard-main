@@ -6,16 +6,17 @@ import { consolidateActionItems } from './ai/actionItemsConsolidationAgent.js';
 import { mapTasksToTranscript } from './ai/taskMappingAgent.js';
 import { refineActionItems } from './ai/actionItemsRefinementAgent.js';
 import { finalConsolidation } from './ai/finalConsolidationAgent.js';
-import { generateActionItemsHTML } from './ai/actionItemsHTMLAgent.js';
-import { createGoogleDoc } from './google/docsService.js';
+import { generateActionItemsJSON } from './ai/actionItemsJSONAgent.js';
+import { convertJSONToHTML } from './jsonToHTMLConverter.js';
+import { createMeetingActionItemsDoc } from './google/docsService.js';
 import { saveActionItemsToSupabase } from './supabaseService.js';
 import { initProgress, updateProgress, setProgressStatus } from './progressService.js';
 
 const ACTION_ITEMS_FOLDER_ID = process.env.GOOGLE_DRIVE_ACTION_ITEMS_FOLDER_ID || '1Hq0HghcY3W2XsaM8g4gFc3PZVOmJ3qAX';
 
-export async function generateActionItems({ meetGeekUrl, meetingTranscript, email, jobId }) {
+export async function generateActionItems({ meetGeekUrl, meetingTranscript, meetingTitle, email, jobId }) {
   let transcript = meetingTranscript || '';
-  let meetingName = 'Untitled Meeting';
+  let meetingName = meetingTitle || 'Untitled Meeting';
   let meetingLink = meetGeekUrl || '';
 
   try {
@@ -33,9 +34,11 @@ export async function generateActionItems({ meetGeekUrl, meetingTranscript, emai
       meetingLink = meetGeekUrl;
       console.log(`[Job ${jobId}] Transcript fetched: ${transcript.length} characters`);
     } else if (meetingTranscript) {
-      // Transcript provided directly, mark step 0 as complete
+      // Transcript provided directly, use provided title
       transcript = meetingTranscript;
+      meetingName = meetingTitle || 'Untitled Meeting';
       console.log(`[Job ${jobId}] Using provided transcript: ${transcript.length} characters`);
+      console.log(`[Job ${jobId}] Meeting title: ${meetingName}`);
     }
     updateProgress(jobId, 0, true);
 
@@ -91,33 +94,38 @@ export async function generateActionItems({ meetGeekUrl, meetingTranscript, emai
     console.log(`[Job ${jobId}] Final action items created`);
     updateProgress(jobId, 5, true);
 
-    // Step 6: Generate HTML email
+    // Step 6: Generate JSON structure
     updateProgress(jobId, 6, false);
-    console.log(`[Job ${jobId}] Step 7/9: Generating HTML document...`);
+    console.log(`[Job ${jobId}] Step 7/9: Generating structured JSON...`);
     
-    const htmlContent = await generateActionItemsHTML({
+    const jsonContent = await generateActionItemsJSON({
       meetingTitle: meetingName,
       meetingSummary: summary,
       sentimentAnalysis: sentiment,
       actionItems: finalActionItems,
-      meetingLink: meetingLink
+      meetingLink: meetingLink,
+      transcript: transcript  // Pass transcript for participant extraction
     });
-    console.log(`[Job ${jobId}] HTML document generated`);
+    console.log(`[Job ${jobId}] JSON structure generated`);
     updateProgress(jobId, 6, true);
 
-    // Step 7: Create Google Doc
+    // Convert JSON to HTML for storage/email
+    const htmlContent = convertJSONToHTML(jsonContent);
+    console.log(`[Job ${jobId}] HTML generated from JSON`);
+
+    // Step 7: Create Google Doc with table format
     updateProgress(jobId, 7, false);
-    console.log(`[Job ${jobId}] Step 8/9: Creating Google Doc...`);
+    console.log(`[Job ${jobId}] Step 8/9: Creating Google Doc with table...`);
     
-    const docResult = await createGoogleDoc({
+    const docResult = await createMeetingActionItemsDoc({
       meetingName: `Meeting action items for :- ${meetingName}`,
-      htmlContent: htmlContent,
+      jsonContent: jsonContent,
       folderId: ACTION_ITEMS_FOLDER_ID
     });
     console.log(`[Job ${jobId}] Google Doc created: ${docResult.documentUrl}`);
     updateProgress(jobId, 7, true);
 
-    // Step 8: Save to Supabase
+    // Step 8: Save to Supabase (save JSON content)
     updateProgress(jobId, 8, false);
     console.log(`[Job ${jobId}] Step 9/9: Saving to database...`);
     
@@ -125,7 +133,8 @@ export async function generateActionItems({ meetGeekUrl, meetingTranscript, emai
       meetingName,
       meetgeekUrl: meetingLink,
       googleDriveLink: docResult.documentUrl,
-      htmlContent: htmlContent
+      htmlContent: htmlContent,
+      jsonContent: jsonContent
     });
     console.log(`[Job ${jobId}] Saved to database`);
     updateProgress(jobId, 8, true);
@@ -134,6 +143,7 @@ export async function generateActionItems({ meetGeekUrl, meetingTranscript, emai
       meetingName,
       googleDriveLink: docResult.documentUrl,
       htmlContent,
+      jsonContent,
       supabaseId: supabaseResult?.id
     };
 

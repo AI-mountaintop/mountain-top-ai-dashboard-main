@@ -24,38 +24,24 @@ export const Sidebar = () => {
 
   return (
     <>
-      <aside className="fixed left-0 top-0 h-screen w-80 bg-card border-r border-border z-40">
+      <aside className="fixed left-0 top-0 h-screen w-64 bg-card border-r border-border z-40">
         <div className="flex flex-col h-full">
           {/* Logo Header */}
-          <div className="px-6 py-4 border-b border-border">
-            <div className="flex flex-col items-center gap-2">
+          <div className="px-8 py-8 border-b border-border">
+            <div className="flex flex-col items-start gap-1">
               <img
                 src="/mountaintop-logo.png"
-                alt="Mountain Top Web Design"
-                className="h-12 w-auto"
+                alt="Mountain Top"
+                className="h-10 w-auto mb-2"
               />
-              <span className="text-xs font-semibold text-muted-foreground text-center">AI Dashboard</span>
+              <span className="text-xs font-medium text-muted-foreground tracking-wide">AI Dashboard</span>
             </div>
           </div>
 
           {/* Navigation */}
-          <ScrollArea className="flex-1 px-3 py-6">
+          <ScrollArea className="flex-1 px-4 py-8">
             <div className="space-y-1">
-              {/* Dashboard */}
-              <button
-                onClick={() => navigate('/')}
-                className={cn(
-                  'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left',
-                  'hover:bg-accent',
-                  location.pathname === '/' && 'bg-primary text-primary-foreground hover:bg-primary/90'
-                )}
-              >
-                <Home className="h-5 w-5 flex-shrink-0" />
-                <span className="font-medium">Dashboard</span>
-              </button>
-
-              {/* Other Navigation Items */}
-              {navItems.slice(1).map((item) => {
+              {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.path;
                 return (
@@ -63,12 +49,13 @@ export const Sidebar = () => {
                     key={item.path}
                     onClick={() => navigate(item.path)}
                     className={cn(
-                      'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left',
-                      'hover:bg-accent',
-                      isActive && 'bg-primary text-primary-foreground hover:bg-primary/90'
+                      'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-left text-sm',
+                      isActive 
+                        ? 'bg-primary text-primary-foreground shadow-sm' 
+                        : 'text-foreground hover:bg-accent hover:text-accent-foreground'
                     )}
                   >
-                    <Icon className="h-5 w-5 flex-shrink-0" />
+                    <Icon className="h-4 w-4 flex-shrink-0" />
                     <span className="font-medium">{item.label}</span>
                   </button>
                 );
@@ -76,19 +63,18 @@ export const Sidebar = () => {
             </div>
           </ScrollArea>
 
-          {/* Footer - Settings (only on Dashboard) */}
-          {location.pathname === '/' && (
-            <div className="p-4 px-6 border-t border-border">
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => setIsSettingsOpen(true)}
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                Settings
-              </Button>
-            </div>
-          )}
+          {/* Footer - Settings */}
+          <div className="p-4 border-t border-border">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start text-sm"
+              onClick={() => setIsSettingsOpen(true)}
+            >
+              <Settings className="h-4 w-4 mr-3" />
+              Settings
+            </Button>
+          </div>
         </div>
       </aside>
 

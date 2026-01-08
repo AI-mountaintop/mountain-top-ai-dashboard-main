@@ -71,10 +71,15 @@ The action items generation process follows this flow:
 - Handles complex multi-phase tasks
 - Maintains parent-subtask hierarchy
 
-### 8. Action Items HTML Agent (`actionItemsHTMLAgent.js`)
-- Generates complete HTML email
-- Categorizes action items intelligently
-- Applies professional styling
+### 8. Action Items JSON Agent (`actionItemsJSONAgent.js`)
+- Generates structured JSON with meeting data
+- Validates and normalizes all fields
+- Provides consistent data structure for frontend
+
+### 9. JSON to HTML Converter (`jsonToHTMLConverter.js`)
+- Converts JSON to professional HTML
+- Deterministic output (no AI variability)
+- Styled for Google Docs compatibility
 
 ## API Endpoint
 

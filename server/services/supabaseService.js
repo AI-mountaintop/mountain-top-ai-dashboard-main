@@ -59,7 +59,7 @@ export async function saveToSupabase({ meetingName, meetingLink, trailmapLink, r
 /**
  * Save action items data to Supabase
  */
-export async function saveActionItemsToSupabase({ meetingName, meetgeekUrl, googleDriveLink, htmlContent }) {
+export async function saveActionItemsToSupabase({ meetingName, meetgeekUrl, googleDriveLink, htmlContent, jsonContent }) {
   if (!supabase) {
     console.warn('Supabase not configured. Skipping database save.');
     return { id: null };
@@ -72,7 +72,8 @@ export async function saveActionItemsToSupabase({ meetingName, meetgeekUrl, goog
         meeting_name: meetingName,
         meetgeek_url: meetgeekUrl,
         google_drive_link: googleDriveLink,
-        html_content: htmlContent
+        html_content: htmlContent,
+        json_content: jsonContent
       })
       .select()
       .single();

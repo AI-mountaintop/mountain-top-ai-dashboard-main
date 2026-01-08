@@ -1,17 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Sidebar } from "@/components/dashboard/Sidebar";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Send, BarChart3, RefreshCw, Calendar, Link as LinkIcon, ExternalLink, Mail, X, CheckCircle2, Loader2, Trash2 } from "lucide-react";
+import { FileText, Send, BarChart3, RefreshCw, Calendar, Link as LinkIcon, ExternalLink, Mail, X, CheckCircle2, Loader2, Trash2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { useJobProgress } from "@/contexts/JobProgressContext";
 import {
     Dialog,
     DialogContent,
@@ -38,31 +41,36 @@ interface MeetingActionItem {
     meetgeek_url: string;
     google_drive_link: string;
     html_content: string;
+    json_content?: any;
     created_at: string;
 }
 
 const MeetingActions = () => {
+    const navigate = useNavigate();
+    const { startJob, getActiveJobByType, getProgressByType } = useJobProgress();
+    
     const [inputType, setInputType] = useState<"link" | "transcript">("link");
     const [meetGeekUrl, setMeetGeekUrl] = useState("");
     const [meetingTranscript, setMeetingTranscript] = useState("");
-    const [isGenerating, setIsGenerating] = useState(false);
+    const [meetingTitle, setMeetingTitle] = useState("");
     const [activeTab, setActiveTab] = useState("input");
 
     // History state
     const [history, setHistory] = useState<MeetingActionItem[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-    // Progress state
-    const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-    const [progress, setProgress] = useState<{
-        status: string;
-        currentStep: number;
-        totalSteps: number;
-        steps: Array<{ name: string; completed: boolean }>;
-        percentage: number;
-        error?: string;
-        result?: any;
-    } | null>(null);
+    // Get active job and progress from global context
+    const activeJob = getActiveJobByType('actionItems');
+    const progress = getProgressByType('actionItems');
+    const isGenerating = !!activeJob;
+
+    // Analytics
+    const analytics = useMemo(() => {
+        const total = history.length;
+        const successful = history.length;
+        const failed = 0;
+        return { total, successful, failed };
+    }, [history]);
 
     // Modal state
     const [selectedMeeting, setSelectedMeeting] = useState<MeetingActionItem | null>(null);
@@ -94,54 +102,23 @@ const MeetingActions = () => {
         fetchHistory();
     }, []);
 
-    // Poll for progress updates
+    // Switch to output tab if there's an active job
     useEffect(() => {
-        if (!currentJobId) return;
+        if (activeJob) {
+            setActiveTab("output");
+        }
+    }, [activeJob]);
 
-        const pollProgress = async () => {
-            try {
-                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-                const response = await fetch(`${apiUrl}/api/action-items/progress/${currentJobId}`);
-                
-                if (!response.ok) {
-                    throw new Error('Failed to fetch progress');
-                }
-
-                const progressData = await response.json();
-                setProgress(progressData);
-
-                // If completed or failed, stop polling and refresh history
-                if (progressData.status === 'completed') {
-                    setIsGenerating(false);
-                    setCurrentJobId(null);
-                    setProgress(null);
-                    
-                    toast.success("Action items generated successfully!");
-                    
-                    // Refresh history immediately and again after a delay
-                    fetchHistory();
-                    setTimeout(fetchHistory, 2000);
-                    setTimeout(fetchHistory, 5000);
-                } else if (progressData.status === 'failed') {
-                    setIsGenerating(false);
-                    setCurrentJobId(null);
-                    setProgress(null);
-                    toast.error(progressData.error || "Failed to generate action items");
-                    // Still refresh history in case partial data was saved
-                    setTimeout(fetchHistory, 1000);
-                }
-            } catch (error) {
-                console.error("Error polling progress:", error);
-                // Don't show error toast for polling errors - just log it
-            }
-        };
-
-        // Poll immediately, then every 2 seconds
-        pollProgress();
-        const interval = setInterval(pollProgress, 2000);
-
-        return () => clearInterval(interval);
-    }, [currentJobId]);
+    // Refresh history when job completes
+    useEffect(() => {
+        if (progress?.status === 'completed') {
+            toast.success("Action items generated successfully!");
+            fetchHistory();
+            setTimeout(fetchHistory, 2000);
+        } else if (progress?.status === 'failed') {
+            toast.error(progress.error || "Failed to generate action items");
+        }
+    }, [progress?.status]);
 
     const handleGenerate = async () => {
         // Validate input based on type
@@ -159,6 +136,10 @@ const MeetingActions = () => {
                 return;
             }
         } else {
+            if (!meetingTitle.trim()) {
+                toast.error("Please enter a meeting title");
+                return;
+            }
             if (!meetingTranscript.trim()) {
                 toast.error("Please enter a meeting transcript");
                 return;
@@ -168,16 +149,15 @@ const MeetingActions = () => {
         // Store values before clearing
         const urlToProcess = inputType === "link" ? meetGeekUrl.trim() : "";
         const transcriptToProcess = inputType === "transcript" ? meetingTranscript.trim() : "";
+        const titleToProcess = inputType === "transcript" ? meetingTitle.trim() : "";
         
-        // Immediately switch to output tab and clear input
-        setActiveTab("output");
+        // Clear input
         setMeetGeekUrl("");
         setMeetingTranscript("");
-        setIsGenerating(true);
-        setProgress(null);
+        setMeetingTitle("");
+        setActiveTab("output");
 
         try {
-            // Use local backend server instead of n8n webhook
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
             const response = await fetch(`${apiUrl}/api/action-items/generate`, {
                 method: "POST",
@@ -187,6 +167,7 @@ const MeetingActions = () => {
                 body: JSON.stringify({
                     meetGeekUrl: urlToProcess || undefined,
                     meetingTranscript: transcriptToProcess || undefined,
+                    meetingTitle: titleToProcess || undefined,
                 }),
             });
 
@@ -197,30 +178,25 @@ const MeetingActions = () => {
 
             const result = await response.json();
             
-            // Set job ID to start polling
+            // Start tracking job in global context
             if (result.jobId) {
-                setCurrentJobId(result.jobId);
+                startJob(result.jobId, 'actionItems');
                 toast.success("Action items generation started");
             } else {
-                // Fallback if jobId is not returned
                 toast.success("Action items generation started successfully");
                 setTimeout(fetchHistory, 2000);
-                setIsGenerating(false);
             }
 
         } catch (error) {
             console.error("Error generating action items:", error);
             toast.error("Failed to generate action items. Please try again.");
-            setIsGenerating(false);
-            // Switch back to input tab on error so user can try again
             setActiveTab("input");
         }
     };
 
     const openMeetingModal = (meeting: MeetingActionItem) => {
-        setSelectedMeeting(meeting);
-        setEmailToSend("");
-        setIsModalOpen(true);
+        // Navigate to detail page instead of modal
+        navigate(`/meeting-actions/${meeting.id}`);
     };
 
     const handleSendEmail = async () => {
@@ -243,7 +219,9 @@ const MeetingActions = () => {
                 body: JSON.stringify({
                     meeting_name: selectedMeeting.meeting_name,
                     html_content: selectedMeeting.html_content,
+                    json_content: selectedMeeting.json_content,
                     email: emailToSend.trim(),
+                    created_at: selectedMeeting.created_at,
                 }),
             });
 
@@ -292,36 +270,31 @@ const MeetingActions = () => {
     };
 
     return (
-        <div className="min-h-screen">
+        <div className="min-h-screen bg-background">
             <Sidebar />
-            <div className="ml-80">
-                <main className="container mx-auto px-4 py-8">
-                    <div className="mb-8">
-                        <h1 className="text-3xl font-bold">Meeting Minutes to Action Items</h1>
-                        <p className="text-muted-foreground mt-2">
-                            Convert meeting transcripts into actionable items
-                        </p>
-                    </div>
+            <div className="ml-64">
+                <main className="container mx-auto px-12 py-12 max-w-6xl">
+                    <PageHeader 
+                        title="Meeting Actions" 
+                        description="Convert meeting transcripts into actionable items"
+                    />
 
                     <Tabs value={activeTab} onValueChange={setActiveTab}>
-                        <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger value="input">Input</TabsTrigger>
-                            <TabsTrigger value="output">Generated Action Items</TabsTrigger>
-                            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+                        <TabsList className="grid w-full grid-cols-3 bg-muted/50">
+                            <TabsTrigger value="input" className="data-[state=active]:bg-background">Input</TabsTrigger>
+                            <TabsTrigger value="output" className="data-[state=active]:bg-background">Generated Items</TabsTrigger>
+                            <TabsTrigger value="analytics" className="data-[state=active]:bg-background">Analytics</TabsTrigger>
                         </TabsList>
 
-                        <TabsContent value="input" className="space-y-4">
-                            <Card>
+                        <TabsContent value="input" className="space-y-6 mt-6">
+                            <Card className="border-border">
                                 <CardHeader>
-                                    <CardTitle className="flex items-center gap-2">
-                                        <LinkIcon className="h-5 w-5" />
-                                        Meeting Information
-                                    </CardTitle>
+                                    <CardTitle className="text-lg font-semibold">Meeting Information</CardTitle>
                                     <CardDescription>
-                                        Provide either a MeetGeek recording URL or meeting transcript to generate action items
+                                        Provide a MeetGeek URL or meeting transcript
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-4">
+                                <CardContent className="space-y-6">
                                     <div className="space-y-3">
                                         <Label>Input Type</Label>
                                         <RadioGroup value={inputType} onValueChange={(value) => setInputType(value as "link" | "transcript")}>
@@ -351,25 +324,45 @@ const MeetingActions = () => {
                                                 onChange={(e) => setMeetGeekUrl(e.target.value)}
                                                 disabled={isGenerating}
                                             />
+                                            <p className="text-xs text-muted-foreground">
+                                                Meeting title will be extracted automatically from the link
+                                            </p>
                                         </div>
                                     ) : (
-                                        <div className="space-y-2">
-                                            <Label htmlFor="meeting-transcript">Meeting Transcript</Label>
-                                            <Textarea
-                                                id="meeting-transcript"
-                                                placeholder="Paste the meeting transcript here..."
-                                                value={meetingTranscript}
-                                                onChange={(e) => setMeetingTranscript(e.target.value)}
-                                                className="min-h-[200px]"
-                                                disabled={isGenerating}
-                                            />
-                                        </div>
+                                        <>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="meeting-title">Meeting Title *</Label>
+                                                <Input
+                                                    id="meeting-title"
+                                                    type="text"
+                                                    placeholder="e.g., Weekly Team Standup, Q1 Planning Meeting"
+                                                    value={meetingTitle}
+                                                    onChange={(e) => setMeetingTitle(e.target.value)}
+                                                    disabled={isGenerating}
+                                                />
+                                                <p className="text-xs text-muted-foreground">
+                                                    Provide a descriptive title for this meeting
+                                                </p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="meeting-transcript">Meeting Transcript *</Label>
+                                                <Textarea
+                                                    id="meeting-transcript"
+                                                    placeholder="Paste the meeting transcript here..."
+                                                    value={meetingTranscript}
+                                                    onChange={(e) => setMeetingTranscript(e.target.value)}
+                                                    className="min-h-[200px]"
+                                                    disabled={isGenerating}
+                                                />
+                                            </div>
+                                        </>
                                     )}
 
                                     <Button
                                         onClick={handleGenerate}
                                         disabled={isGenerating}
-                                        className="w-full"
+                                        className="w-full bg-primary hover:bg-primary/90"
+                                        size="lg"
                                     >
                                         {isGenerating ? (
                                             <>
@@ -387,18 +380,18 @@ const MeetingActions = () => {
                             </Card>
                         </TabsContent>
 
-                        <TabsContent value="output" className="space-y-4">
+                        <TabsContent value="output" className="space-y-6 mt-6">
                             {/* Progress Card - Show when generating */}
                             {(isGenerating || progress) && (
-                                <Card className="bg-muted/50">
+                                <Card className="border-border bg-muted/30">
                                     <CardHeader>
-                                        <CardTitle>Generation Progress</CardTitle>
+                                        <CardTitle className="text-lg font-semibold">Generation Progress</CardTitle>
                                         <CardDescription>
-                                            Action items are being generated. Please wait...
+                                            Please wait while action items are being generated
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="space-y-4">
+                                        <div className="space-y-6">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-sm font-medium">Progress</span>
                                                 <span className="text-sm text-muted-foreground">{progress?.percentage || 0}%</span>
@@ -430,37 +423,35 @@ const MeetingActions = () => {
                                 </Card>
                             )}
 
-                            <Card>
+                            <Card className="border-border">
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <div>
-                                        <CardTitle>Generated Action Items</CardTitle>
+                                        <CardTitle className="text-lg font-semibold">Generated Items</CardTitle>
                                         <CardDescription>
-                                            History of all generated action item documents
+                                            History of all generated action items
                                         </CardDescription>
                                     </div>
-                                    <Button variant="outline" size="sm" onClick={fetchHistory} disabled={isLoadingHistory}>
+                                    <Button variant="outline" size="sm" onClick={fetchHistory} disabled={isLoadingHistory} className="border-border">
                                         <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingHistory ? 'animate-spin' : ''}`} />
                                         Refresh
                                     </Button>
                                 </CardHeader>
                                 <CardContent>
                                     {isLoadingHistory ? (
-                                        <div className="text-center py-12">
-                                            <RefreshCw className="h-8 w-8 animate-spin mx-auto text-muted-foreground mb-4" />
-                                            <p className="text-muted-foreground">Loading history...</p>
+                                        <div className="text-center py-16">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto mb-4"></div>
+                                            <p className="text-sm text-muted-foreground">Loading...</p>
                                         </div>
                                     ) : history.length > 0 ? (
-                                        <div className="space-y-4">
+                                        <div className="space-y-3">
                                             {history.map((item) => (
-                                                <div key={item.id} className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors">
+                                                <div key={item.id} className="border border-border rounded-lg p-5 bg-card hover:border-primary/20 transition-all duration-200">
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex-1">
                                                             <div className="flex items-center gap-3">
-                                                                <div className="bg-primary/10 p-2 rounded-full">
-                                                                    <FileText className="h-5 w-5 text-primary" />
-                                                                </div>
+                                                                <FileText className="h-5 w-5 text-muted-foreground" />
                                                                 <div>
-                                                                    <h3 className="font-medium">
+                                                                    <h3 className="font-medium text-base">
                                                                         {item.meeting_name || "Untitled Meeting"}
                                                                     </h3>
                                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
@@ -475,8 +466,9 @@ const MeetingActions = () => {
                                                                 variant="outline"
                                                                 size="sm"
                                                                 onClick={() => openMeetingModal(item)}
+                                                                className="border-border"
                                                             >
-                                                                View Minutes
+                                                                View
                                                             </Button>
                                                             {item.google_drive_link && (
                                                                 <Button asChild variant="ghost" size="sm">
@@ -487,22 +479,21 @@ const MeetingActions = () => {
                                                             )}
                                                             <AlertDialog>
                                                                 <AlertDialogTrigger asChild>
-                                                                    <Button variant="destructive" size="icon" className="h-8 w-8">
+                                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
                                                                         <Trash2 className="h-4 w-4" />
                                                                     </Button>
                                                                 </AlertDialogTrigger>
                                                                 <AlertDialogContent>
                                                                     <AlertDialogHeader>
-                                                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                                                        <AlertDialogTitle>Delete action item?</AlertDialogTitle>
                                                                         <AlertDialogDescription>
-                                                                            This action cannot be undone. This will permanently delete your action item
-                                                                            record from Supabase and the associated document from Google Drive.
+                                                                            This will permanently delete the action item from the database and Google Drive.
                                                                         </AlertDialogDescription>
                                                                     </AlertDialogHeader>
                                                                     <AlertDialogFooter>
                                                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                        <AlertDialogAction onClick={() => handleDeleteActionItem(item.id, item.google_drive_link)}>
-                                                                            Continue
+                                                                        <AlertDialogAction onClick={() => handleDeleteActionItem(item.id, item.google_drive_link)} className="bg-destructive hover:bg-destructive/90">
+                                                                            Delete
                                                                         </AlertDialogAction>
                                                                     </AlertDialogFooter>
                                                                 </AlertDialogContent>
@@ -513,11 +504,11 @@ const MeetingActions = () => {
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="text-center py-12 text-muted-foreground">
-                                            <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                                            <p>No action items generated yet.</p>
-                                            <Button variant="link" onClick={() => setActiveTab("input")}>
-                                                Create your first action item
+                                        <div className="text-center py-16 text-muted-foreground">
+                                            <FileText className="h-10 w-10 mx-auto mb-4 opacity-40" />
+                                            <p className="text-sm mb-2">No action items yet</p>
+                                            <Button variant="link" onClick={() => setActiveTab("input")} className="text-sm">
+                                                Create your first item
                                             </Button>
                                         </div>
                                     )}
@@ -525,17 +516,49 @@ const MeetingActions = () => {
                             </Card>
                         </TabsContent>
 
-                        <TabsContent value="analytics" className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-3">
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Total Runs</CardTitle>
-                                        <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                        <TabsContent value="analytics" className="space-y-6 mt-6">
+                            <div className="grid gap-6 md:grid-cols-3">
+                                <Card className="border-border">
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="text-sm font-medium text-muted-foreground">Total Requests</CardTitle>
+                                            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                                        </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="text-2xl font-bold">{history.length}</div>
-                                        <p className="text-xs text-muted-foreground">
-                                            Action items generated
+                                        <div className="text-3xl font-semibold">{analytics.total}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            All action items generated
+                                        </p>
+                                    </CardContent>
+                                </Card>
+
+                                <Card className="border-border">
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="text-sm font-medium text-muted-foreground">Successful</CardTitle>
+                                            <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-semibold text-green-700">{analytics.successful}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Requests completed
+                                        </p>
+                                    </CardContent>
+                                </Card>
+
+                                <Card className="border-border">
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="text-sm font-medium text-muted-foreground">Failed</CardTitle>
+                                            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-3xl font-semibold text-red-600">{analytics.failed}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Requests failed
                                         </p>
                                     </CardContent>
                                 </Card>

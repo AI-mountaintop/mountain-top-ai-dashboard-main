@@ -167,7 +167,7 @@ const Home = () => {
   return (
     <div className="min-h-screen">
       <Sidebar />
-      <div className="ml-80">
+      <div className="ml-64">
         <main className="container mx-auto px-4 py-8 space-y-8">
           {/* Page Header */}
           <div>

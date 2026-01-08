@@ -27,7 +27,7 @@ Write **short, precise bullet points** describing:
 - The sentences that you'll phrase should not be big they should be short and concise, near around 20 words not more than that
 
 ### Output Format
-
+- Also give how many participants were there and who are they 
 - **around 10 bullet points**, each 1 sentence keep it short and concise
 - Keep each bullet short, specific, and accurate
 - Total output: **at max 200 words**

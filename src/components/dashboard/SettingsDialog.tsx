@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { User, Bell, Palette, Database } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTheme } from '@/contexts/ThemeContext';
+import { cn } from '@/lib/utils';
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -28,6 +30,7 @@ export const SettingsDialog = ({
   autoRefresh,
   onToggleAutoRefresh,
 }: SettingsDialogProps) => {
+  const { theme, setTheme } = useTheme();
   const [profile, setProfile] = useState({
     name: 'John Doe',
     email: 'john.doe@example.com',
@@ -185,16 +188,43 @@ export const SettingsDialog = ({
               <div>
                 <h4 className="font-semibold mb-4">Theme</h4>
                 <div className="grid grid-cols-3 gap-4">
-                  <button className="p-4 rounded-lg border-2 border-primary bg-card hover:bg-accent transition-colors">
-                    <div className="w-full h-20 rounded bg-gradient-to-br from-background to-muted mb-2" />
+                  <button 
+                    onClick={() => {
+                      setTheme('light');
+                      toast.success('Theme changed to Light');
+                    }}
+                    className={cn(
+                      "p-4 rounded-lg border-2 bg-card hover:bg-accent transition-colors",
+                      theme === 'light' ? 'border-primary' : 'border-border hover:border-primary'
+                    )}
+                  >
+                    <div className="w-full h-20 rounded bg-gradient-to-br from-white to-gray-100 mb-2 border" />
                     <p className="text-sm font-medium">Light</p>
                   </button>
-                  <button className="p-4 rounded-lg border hover:border-primary bg-card hover:bg-accent transition-colors">
+                  <button 
+                    onClick={() => {
+                      setTheme('dark');
+                      toast.success('Theme changed to Dark');
+                    }}
+                    className={cn(
+                      "p-4 rounded-lg border-2 bg-card hover:bg-accent transition-colors",
+                      theme === 'dark' ? 'border-primary' : 'border-border hover:border-primary'
+                    )}
+                  >
                     <div className="w-full h-20 rounded bg-gradient-to-br from-slate-900 to-slate-700 mb-2" />
                     <p className="text-sm font-medium">Dark</p>
                   </button>
-                  <button className="p-4 rounded-lg border hover:border-primary bg-card hover:bg-accent transition-colors">
-                    <div className="w-full h-20 rounded bg-gradient-to-br from-background via-muted to-slate-700 mb-2" />
+                  <button 
+                    onClick={() => {
+                      setTheme('auto');
+                      toast.success('Theme set to Auto (follows system)');
+                    }}
+                    className={cn(
+                      "p-4 rounded-lg border-2 bg-card hover:bg-accent transition-colors",
+                      theme === 'auto' ? 'border-primary' : 'border-border hover:border-primary'
+                    )}
+                  >
+                    <div className="w-full h-20 rounded bg-gradient-to-br from-white via-gray-200 to-slate-700 mb-2 border" />
                     <p className="text-sm font-medium">Auto</p>
                   </button>
                 </div>

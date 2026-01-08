@@ -9,14 +9,16 @@ import { createGoogleSlides } from './google/slidesService.js';
 import { saveToSupabase } from './supabaseService.js';
 import { updateProgress, setProgressStatus } from './progressService.js';
 
-export async function generateTrailmap({ meetingLink, meetingTranscript, jobId }) {
+export async function generateTrailmap({ meetingLink, meetingTranscript, meetingTitle, jobId }) {
   let transcript = meetingTranscript;
-  let meetingName = 'Untitled Meeting';
+  let meetingName = meetingTitle || 'Untitled Meeting';
   let finalMeetingLink = meetingLink;
 
   try {
     console.log(`\n[Job ${jobId}] Starting Digital Trailmap generation...`);
     console.log(`[Job ${jobId}] Input type: ${meetingLink ? 'MeetGeek URL' : 'Direct transcript'}`);
+    console.log(`[Job ${jobId}] Meeting title provided: "${meetingTitle || 'none'}"`);
+    console.log(`[Job ${jobId}] Using meeting name: "${meetingName}"`);
     
     setProgressStatus(jobId, 'processing');
 
@@ -38,6 +40,7 @@ export async function generateTrailmap({ meetingLink, meetingTranscript, jobId }
     } else if (meetingTranscript) {
       // Transcript provided directly, mark step 0 as complete
       console.log(`[Job ${jobId}] Step 1/9: Using provided transcript`);
+      console.log(`[Job ${jobId}] Meeting name being used: "${meetingName}"`);
       console.log(`[Job ${jobId}] Transcript length: ${transcript.length} characters`);
       updateProgress(jobId, 0, true);
     }
@@ -153,13 +156,10 @@ export async function generateTrailmap({ meetingLink, meetingTranscript, jobId }
     // Step 8: Save to Supabase
     updateProgress(jobId, 8, false);
     console.log(`[Job ${jobId}] Step 9/9: Saving to database...`);
+    console.log(`[Job ${jobId}] Saving with meeting name: "${meetingName}"`);
     
-    const trailmapLink = slidesResult.presentationId 
-      ? `https://docs.google.com/presentation/d/${slidesResult.presentationId}`
-      : null;
-    const reportLink = docResult.documentId
-      ? `https://docs.google.com/document/d/${docResult.documentId}`
-      : null;
+    const trailmapLink = slidesResult.presentationUrl || null;
+    const reportLink = docResult.documentUrl || null;
     
     const supabaseResult = await saveToSupabase({
       meetingName,
@@ -178,12 +178,8 @@ export async function generateTrailmap({ meetingLink, meetingTranscript, jobId }
 
     const result = {
       meetingName,
-      trailmapLink: slidesResult.presentationId 
-        ? `https://docs.google.com/presentation/d/${slidesResult.presentationId}`
-        : null,
-      reportLink: docResult.documentId
-        ? `https://docs.google.com/document/d/${docResult.documentId}`
-        : null,
+      trailmapLink: slidesResult.presentationUrl || null,
+      reportLink: docResult.documentUrl || null,
       supabaseId: supabaseResult?.id
     };
 
