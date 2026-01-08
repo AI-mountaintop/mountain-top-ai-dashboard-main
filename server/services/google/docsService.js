@@ -11,53 +11,85 @@ function parseHTMLContent(html) {
     const document = dom.window.document;
     
     const content = [];
+    const processedTexts = new Set(); // Track processed text to avoid duplicates
     
     function processNode(node, level = 0, inList = false) {
       if (node.nodeType === 3) { // Text node
         const text = node.textContent.trim();
-        if (text && !inList) {
+        if (text && !inList && !processedTexts.has(text)) {
           // Only add standalone text if not inside a list (lists handle their own text)
           content.push({ type: 'paragraph', text });
+          processedTexts.add(text);
         }
       } else if (node.nodeType === 1) { // Element node
         const tagName = node.tagName.toLowerCase();
         
         if (tagName === 'h1') {
           const text = node.textContent.trim();
-          if (text) content.push({ type: 'heading1', text });
+          if (text && !processedTexts.has(text)) {
+            content.push({ type: 'heading1', text });
+            processedTexts.add(text);
+          }
         } else if (tagName === 'h2') {
           const text = node.textContent.trim();
-          if (text) content.push({ type: 'heading2', text });
+          if (text && !processedTexts.has(text)) {
+            content.push({ type: 'heading2', text });
+            processedTexts.add(text);
+          }
         } else if (tagName === 'h3') {
           const text = node.textContent.trim();
-          if (text) content.push({ type: 'heading3', text });
+          if (text && !processedTexts.has(text)) {
+            content.push({ type: 'heading3', text });
+            processedTexts.add(text);
+          }
         } else if (tagName === 'h4') {
           const text = node.textContent.trim();
-          if (text) content.push({ type: 'heading3', text }); // Map h4 to heading3
+          if (text && !processedTexts.has(text)) {
+            content.push({ type: 'heading3', text }); // Map h4 to heading3
+            processedTexts.add(text);
+          }
         } else if (tagName === 'p') {
           const text = node.textContent.trim();
-          // Only add non-empty paragraphs
-          if (text && text.length > 0) {
+          // Only add non-empty paragraphs that haven't been processed
+          if (text && text.length > 0 && !processedTexts.has(text)) {
             content.push({ type: 'paragraph', text });
+            processedTexts.add(text);
           }
         } else if (tagName === 'li') {
           const text = node.textContent.trim();
-          if (text) content.push({ type: 'bullet', text, level });
+          if (text && !processedTexts.has(text)) {
+            content.push({ type: 'bullet', text, level });
+            processedTexts.add(text);
+          }
+          // Don't process children of li - we already got the full text
         } else if (tagName === 'ul' || tagName === 'ol') {
-          // Process list items
+          // Process list items directly
           Array.from(node.children).forEach(child => {
             if (child.tagName.toLowerCase() === 'li') {
-              processNode(child, level, true);
+              const text = child.textContent.trim();
+              if (text && !processedTexts.has(text)) {
+                content.push({ type: 'bullet', text, level });
+                processedTexts.add(text);
+              }
             }
           });
         } else if (tagName === 'div' || tagName === 'section' || tagName === 'article') {
           // Process container elements recursively
           Array.from(node.childNodes).forEach(child => processNode(child, level, inList));
-        } else if (tagName === 'strong' || tagName === 'b' || tagName === 'em' || tagName === 'i') {
-          // For inline formatting, just get the text (formatting will be lost but content preserved)
-          const text = node.textContent.trim();
-          if (text && !inList) {
-            content.push({ type: 'paragraph', text });
+        } else if (tagName === 'strong' || tagName === 'b' || tagName === 'em' || tagName === 'i' || tagName === 'span') {
+          // Skip inline formatting elements - their text is captured by parent
+          // Only add if parent is not a block element
+          if (!inList) {
+            const parent = node.parentNode;
+            const parentTag = parent?.tagName?.toLowerCase();
+            // Only process if parent is body or a container, not a block element
+            if (parentTag === 'body' || parentTag === 'div' || parentTag === 'section') {
+              const text = node.textContent.trim();
+              if (text && !processedTexts.has(text)) {
+                content.push({ type: 'paragraph', text });
+                processedTexts.add(text);
+              }
+            }
           }
         } else if (tagName === 'br') {
           // Skip line breaks - they create empty space
