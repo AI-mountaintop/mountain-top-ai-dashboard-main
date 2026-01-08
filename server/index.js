@@ -79,7 +79,12 @@ app.get('/health', (req, res) => {
 // Digital Trailmap generation endpoint
 app.post('/api/trailmap/generate', async (req, res) => {
   try {
-    const { meetingLink, meetingTranscript } = req.body;
+    const { meetingLink, meetingTranscript, meetingTitle } = req.body;
+
+    console.log('[API] Trailmap generation request received:');
+    console.log(`[API] - meetingLink: ${meetingLink ? 'provided' : 'not provided'}`);
+    console.log(`[API] - meetingTranscript: ${meetingTranscript ? `${meetingTranscript.length} chars` : 'not provided'}`);
+    console.log(`[API] - meetingTitle: "${meetingTitle || 'not provided'}"`);
 
     if (!meetingLink && !meetingTranscript) {
       return res.status(400).json({ 
@@ -97,6 +102,7 @@ app.post('/api/trailmap/generate', async (req, res) => {
     generateTrailmap({
       meetingLink,
       meetingTranscript,
+      meetingTitle,
       jobId
     }).catch(error => {
       console.error('Error in trailmap generation:', error);
@@ -251,7 +257,7 @@ app.delete('/api/trailmaps/:id', async (req, res) => {
 // Meeting Action Items generation endpoint (replaces n8n webhook action-items)
 app.post('/api/action-items/generate', async (req, res) => {
   try {
-    const { meetGeekUrl, meetingTranscript, email } = req.body;
+    const { meetGeekUrl, meetingTranscript, meetingTitle, email } = req.body;
 
     if (!meetGeekUrl && !meetingTranscript) {
       return res.status(400).json({ 
@@ -269,6 +275,7 @@ app.post('/api/action-items/generate', async (req, res) => {
     generateActionItems({
       meetGeekUrl,
       meetingTranscript,
+      meetingTitle,
       email,
       jobId
     }).catch(error => {
@@ -323,28 +330,34 @@ app.get('/api/action-items/progress/:jobId', (req, res) => {
 app.post('/api/action-items/send-email', async (req, res) => {
   try {
     console.log('[API] Received email send request');
-    const { meeting_name, html_content, email } = req.body;
+    const { meeting_name, html_content, json_content, email, created_at, completed_item_ids } = req.body;
 
     console.log(`[API] Email to: ${email}`);
     console.log(`[API] Meeting name: ${meeting_name}`);
     console.log(`[API] HTML content length: ${html_content?.length || 0} characters`);
+    console.log(`[API] Has JSON content: ${!!json_content}`);
+    console.log(`[API] Completed items to exclude: ${completed_item_ids?.length || 0}`);
 
-    if (!email || !html_content) {
-      console.error('[API] Missing required fields (email or html_content)');
+    if (!email) {
+      console.error('[API] Missing required field: email');
       return res.status(400).json({ 
-        error: 'email and html_content are required' 
+        error: 'email is required' 
       });
     }
 
     // Use default meeting name if not provided
     const finalMeetingName = meeting_name || 'Meeting Action Items';
 
-    // Send email
+    // Send email with JSON content for better formatting
     console.log('[API] Calling sendEmail function...');
     const result = await sendEmail({
       to: email,
       subject: `Meeting action items for :- ${finalMeetingName}`,
-      htmlContent: html_content
+      htmlContent: html_content,
+      jsonContent: json_content,
+      meetingName: finalMeetingName,
+      createdAt: created_at || new Date().toISOString(),
+      completedItemIds: completed_item_ids || []
     });
 
     console.log('[API] Email sent successfully');

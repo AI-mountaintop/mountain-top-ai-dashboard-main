@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,11 +8,23 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Send, BarChart3, RefreshCw, Calendar, Link as LinkIcon, ExternalLink, CheckCircle2, Loader2, Trash2 } from "lucide-react";
+import { FileText, Send, BarChart3, RefreshCw, Calendar, ExternalLink, CheckCircle2, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 import { Progress } from "@/components/ui/progress";
+import { useJobProgress } from "@/contexts/JobProgressContext";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface DigitalTrailmapItem {
     id: string;
@@ -23,27 +36,22 @@ interface DigitalTrailmapItem {
 }
 
 const DigitalTrailmap = () => {
+    const { startJob, getActiveJobByType, getProgressByType } = useJobProgress();
+    
     const [inputType, setInputType] = useState<"link" | "transcript">("link");
     const [meetingLink, setMeetingLink] = useState("");
     const [meetingTranscript, setMeetingTranscript] = useState("");
-    const [isGenerating, setIsGenerating] = useState(false);
+    const [meetingTitle, setMeetingTitle] = useState("");
     const [activeTab, setActiveTab] = useState("input");
 
     // History state
     const [history, setHistory] = useState<DigitalTrailmapItem[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-    // Progress state
-    const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-    const [progress, setProgress] = useState<{
-        status: string;
-        currentStep: number;
-        totalSteps: number;
-        steps: Array<{ name: string; completed: boolean }>;
-        percentage: number;
-        error?: string;
-        result?: any;
-    } | null>(null);
+    // Get active job and progress from global context
+    const activeJob = getActiveJobByType('trailmap');
+    const progress = getProgressByType('trailmap');
+    const isGenerating = !!activeJob;
 
     const fetchHistory = async () => {
         setIsLoadingHistory(true);
@@ -65,10 +73,6 @@ const DigitalTrailmap = () => {
     };
 
     const handleDelete = async (item: DigitalTrailmapItem) => {
-        if (!confirm(`Are you sure you want to delete "${item.meeting_name}"? This will permanently delete the trailmap and report from Google Drive and Supabase.`)) {
-            return;
-        }
-
         try {
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
             const response = await fetch(`${apiUrl}/api/trailmaps/${item.id}`, {
@@ -88,8 +92,6 @@ const DigitalTrailmap = () => {
             }
 
             toast.success("Trailmap deleted successfully");
-            
-            // Refresh the history list
             fetchHistory();
         } catch (error) {
             console.error("Error deleting trailmap:", error);
@@ -102,60 +104,23 @@ const DigitalTrailmap = () => {
         fetchHistory();
     }, []);
 
-    // Poll for progress updates
+    // Switch to output tab if there's an active job
     useEffect(() => {
-        if (!currentJobId) return;
+        if (activeJob) {
+            setActiveTab("output");
+        }
+    }, [activeJob]);
 
-        const pollProgress = async () => {
-            try {
-                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-                const response = await fetch(`${apiUrl}/api/trailmap/progress/${currentJobId}`);
-                
-                if (!response.ok) {
-                    throw new Error('Failed to fetch progress');
-                }
-
-                const progressData = await response.json();
-                setProgress(progressData);
-
-                // If completed or failed, stop polling and refresh history
-                if (progressData.status === 'completed') {
-                    setIsGenerating(false);
-                    setCurrentJobId(null);
-                    setProgress(null);
-                    
-                    // Show success message with details
-                    const hasTrailmap = progressData.result?.trailmapLink;
-                    const hasReport = progressData.result?.reportLink;
-                    let message = "Trailmap generated successfully!";
-                    if (!hasTrailmap && !hasReport) {
-                        message += " (Note: Documents may not have been created - check server logs)";
-                    }
-                    toast.success(message);
-                    
-                    // Refresh history immediately and again after a delay
-                    fetchHistory();
-                    setTimeout(fetchHistory, 2000);
-                    setTimeout(fetchHistory, 5000);
-                } else if (progressData.status === 'failed') {
-                    setIsGenerating(false);
-                    setCurrentJobId(null);
-                    setProgress(null);
-                    toast.error(progressData.error || "Failed to generate trailmap");
-                    // Still refresh history in case partial data was saved
-                    setTimeout(fetchHistory, 1000);
-                }
-            } catch (error) {
-                console.error("Error polling progress:", error);
-            }
-        };
-
-        // Poll immediately, then every 1 second
-        pollProgress();
-        const interval = setInterval(pollProgress, 1000);
-
-        return () => clearInterval(interval);
-    }, [currentJobId]);
+    // Refresh history when job completes
+    useEffect(() => {
+        if (progress?.status === 'completed') {
+            toast.success("Trailmap generated successfully!");
+            fetchHistory();
+            setTimeout(fetchHistory, 2000);
+        } else if (progress?.status === 'failed') {
+            toast.error(progress.error || "Failed to generate trailmap");
+        }
+    }, [progress?.status]);
 
     const handleGenerate = async () => {
         if (inputType === "link") {
@@ -176,13 +141,24 @@ const DigitalTrailmap = () => {
                 toast.error("Please enter a Meeting Transcript");
                 return;
             }
+            if (!meetingTitle.trim()) {
+                toast.error("Please enter a Meeting Title");
+                return;
+            }
         }
 
-        setIsGenerating(true);
-        setProgress(null);
+        // Store values before clearing
+        const linkToProcess = inputType === "link" ? meetingLink.trim() : "";
+        const transcriptToProcess = inputType === "transcript" ? meetingTranscript.trim() : "";
+        const titleToProcess = inputType === "transcript" ? meetingTitle.trim() : "";
+
+        // Clear input and switch to output tab
+        setMeetingLink("");
+        setMeetingTranscript("");
+        setMeetingTitle("");
+        setActiveTab("output");
 
         try {
-            // Use local backend server instead of n8n webhook
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
             const response = await fetch(`${apiUrl}/api/trailmap/generate`, {
                 method: "POST",
@@ -190,8 +166,9 @@ const DigitalTrailmap = () => {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    meetingLink: inputType === "link" ? meetingLink.trim() : undefined,
-                    meetingTranscript: inputType === "transcript" ? meetingTranscript.trim() : undefined,
+                    meetingLink: linkToProcess || undefined,
+                    meetingTranscript: transcriptToProcess || undefined,
+                    meetingTitle: titleToProcess || undefined,
                 }),
             });
 
@@ -202,50 +179,48 @@ const DigitalTrailmap = () => {
 
             const result = await response.json();
             
-            // Immediately switch to output tab and start polling
-            setCurrentJobId(result.jobId);
-            setActiveTab("output");
-            setMeetingLink("");
-            setMeetingTranscript("");
+            // Start tracking job in global context
+            if (result.jobId) {
+                startJob(result.jobId, 'trailmap');
+                toast.success("Trailmap generation started");
+            } else {
+                toast.success("Trailmap generation started successfully");
+                setTimeout(fetchHistory, 2000);
+            }
 
         } catch (error) {
             console.error("Error generating trailmap:", error);
             toast.error("Failed to generate trailmap. Please try again.");
-            setIsGenerating(false);
+            setActiveTab("input");
         }
     };
 
     return (
-        <div className="min-h-screen">
+        <div className="min-h-screen bg-background">
             <Sidebar />
-            <div className="ml-80">
-                <main className="container mx-auto px-4 py-8">
-                    <div className="mb-8">
-                        <h1 className="text-3xl font-bold">Digital Trailmap Generation</h1>
-                        <p className="text-muted-foreground mt-2">
-                            Generate comprehensive digital trailmaps from meeting links
-                        </p>
-                    </div>
+            <div className="ml-64">
+                <main className="container mx-auto px-12 py-12 max-w-6xl">
+                    <PageHeader 
+                        title="Digital Trailmap" 
+                        description="Generate comprehensive digital trailmaps from meeting links"
+                    />
 
                     <Tabs value={activeTab} onValueChange={setActiveTab}>
-                        <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger value="input">Input</TabsTrigger>
-                            <TabsTrigger value="output">Generated Trailmaps</TabsTrigger>
-                            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+                        <TabsList className="grid w-full grid-cols-3 bg-muted/50 mb-6">
+                            <TabsTrigger value="input" className="data-[state=active]:bg-background">Input</TabsTrigger>
+                            <TabsTrigger value="output" className="data-[state=active]:bg-background">Generated Trailmaps</TabsTrigger>
+                            <TabsTrigger value="analytics" className="data-[state=active]:bg-background">Analytics</TabsTrigger>
                         </TabsList>
 
-                        <TabsContent value="input" className="space-y-4">
-                            <Card>
+                        <TabsContent value="input" className="space-y-6 mt-0">
+                            <Card className="border-border">
                                 <CardHeader>
-                                    <CardTitle className="flex items-center gap-2">
-                                        <LinkIcon className="h-5 w-5" />
-                                        Meeting Information
-                                    </CardTitle>
+                                    <CardTitle className="text-lg font-semibold">Meeting Information</CardTitle>
                                     <CardDescription>
-                                        Provide either a meeting link or meeting transcript to generate a digital trailmap
+                                        Provide a meeting link or meeting transcript
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-4">
+                                <CardContent className="space-y-6">
                                     <div className="space-y-3">
                                         <Label>Input Type</Label>
                                         <RadioGroup value={inputType} onValueChange={(value) => setInputType(value as "link" | "transcript")}>
@@ -273,102 +248,132 @@ const DigitalTrailmap = () => {
                                                 placeholder="https://meetgeek.ai/recording/..."
                                                 value={meetingLink}
                                                 onChange={(e) => setMeetingLink(e.target.value)}
+                                                disabled={isGenerating}
                                             />
                                         </div>
                                     ) : (
-                                        <div className="space-y-2">
-                                            <Label htmlFor="meeting-transcript">Meeting Transcript</Label>
-                                            <Textarea
-                                                id="meeting-transcript"
-                                                placeholder="Paste the meeting transcript here..."
-                                                value={meetingTranscript}
-                                                onChange={(e) => setMeetingTranscript(e.target.value)}
-                                                className="min-h-[200px]"
-                                            />
-                                        </div>
+                                        <>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="meeting-title">
+                                                    Meeting Title <span className="text-destructive">*</span>
+                                                </Label>
+                                                <Input
+                                                    id="meeting-title"
+                                                    type="text"
+                                                    placeholder="e.g., Q1 Strategy Planning Meeting"
+                                                    value={meetingTitle}
+                                                    onChange={(e) => setMeetingTitle(e.target.value)}
+                                                    disabled={isGenerating}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="meeting-transcript">Meeting Transcript</Label>
+                                                <Textarea
+                                                    id="meeting-transcript"
+                                                    placeholder="Paste the meeting transcript here..."
+                                                    value={meetingTranscript}
+                                                    onChange={(e) => setMeetingTranscript(e.target.value)}
+                                                    className="min-h-[200px]"
+                                                    disabled={isGenerating}
+                                                />
+                                            </div>
+                                        </>
                                     )}
 
                                     <Button
                                         onClick={handleGenerate}
                                         disabled={isGenerating}
-                                        className="w-full"
+                                        className="w-full bg-primary hover:bg-primary/90"
+                                        size="lg"
                                     >
-                                        <Send className="h-4 w-4 mr-2" />
-                                        {isGenerating ? "Generating..." : "Generate Trailmap"}
+                                        {isGenerating ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                Generating...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Send className="h-4 w-4 mr-2" />
+                                                Generate Trailmap
+                                            </>
+                                        )}
                                     </Button>
                                 </CardContent>
                             </Card>
                         </TabsContent>
 
-                        <TabsContent value="output" className="space-y-4">
+                        <TabsContent value="output" className="space-y-6 mt-0">
                             {/* Progress Card - Show when generating */}
-                            {isGenerating && progress && (
-                                <Card>
+                            {(isGenerating || progress) && (
+                                <Card className="border-border bg-muted/30">
                                     <CardHeader>
-                                        <CardTitle>Generating Trailmap...</CardTitle>
+                                        <CardTitle className="text-lg font-semibold">Generation Progress</CardTitle>
                                         <CardDescription>
-                                            Please wait while we generate your digital trailmap
+                                            Please wait while the trailmap is being generated
                                         </CardDescription>
                                     </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-muted-foreground">Progress</span>
-                                                <span className="font-medium">{progress.percentage}%</span>
+                                    <CardContent>
+                                        <div className="space-y-6">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm font-medium">Progress</span>
+                                                <span className="text-sm text-muted-foreground">{progress?.percentage || 0}%</span>
                                             </div>
-                                            <Progress value={progress.percentage} className="h-2" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            {progress.steps.map((step, index) => (
-                                                <div key={index} className="flex items-center gap-3 text-sm">
-                                                    {step.completed ? (
-                                                        <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
-                                                    ) : index === progress.currentStep ? (
-                                                        <Loader2 className="h-4 w-4 text-primary animate-spin flex-shrink-0" />
-                                                    ) : (
-                                                        <div className="h-4 w-4 rounded-full border-2 border-muted-foreground flex-shrink-0" />
-                                                    )}
-                                                    <span className={step.completed ? "text-muted-foreground line-through" : index === progress.currentStep ? "font-medium" : "text-muted-foreground"}>
-                                                        {step.name}
-                                                    </span>
-                                                </div>
-                                            ))}
+                                            <Progress value={progress?.percentage || 0} className="h-2" />
+                                            <div className="space-y-2 mt-4">
+                                                {progress?.steps?.map((step, index) => (
+                                                    <div key={index} className="flex items-center gap-2 text-sm">
+                                                        {step.completed ? (
+                                                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                        ) : progress.currentStep === index ? (
+                                                            <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                                                        ) : (
+                                                            <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+                                                        )}
+                                                        <span className={step.completed ? "text-foreground" : progress.currentStep === index ? "text-primary font-medium" : "text-muted-foreground"}>
+                                                            {step.name}
+                                                        </span>
+                                                    </div>
+                                                )) || (
+                                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                        <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                                                        <span>Initializing generation...</span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </CardContent>
                                 </Card>
                             )}
 
-                            <Card>
+                            <Card className="border-border">
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <div>
-                                        <CardTitle>Generated Trailmaps</CardTitle>
+                                        <CardTitle className="text-lg font-semibold">Generated Trailmaps</CardTitle>
                                         <CardDescription>
                                             History of all generated digital trailmaps
                                         </CardDescription>
                                     </div>
-                                    <Button variant="outline" size="sm" onClick={fetchHistory} disabled={isLoadingHistory}>
+                                    <Button variant="outline" size="sm" onClick={fetchHistory} disabled={isLoadingHistory} className="border-border">
                                         <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingHistory ? 'animate-spin' : ''}`} />
                                         Refresh
                                     </Button>
                                 </CardHeader>
                                 <CardContent>
                                     {isLoadingHistory ? (
-                                        <div className="text-center py-12">
-                                            <RefreshCw className="h-8 w-8 animate-spin mx-auto text-muted-foreground mb-4" />
-                                            <p className="text-muted-foreground">Loading history...</p>
+                                        <div className="text-center py-16">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto mb-4"></div>
+                                            <p className="text-sm text-muted-foreground">Loading...</p>
                                         </div>
                                     ) : history.length > 0 ? (
-                                        <div className="space-y-4">
+                                        <div className="space-y-3">
                                             {history.map((item) => (
-                                                <div key={item.id} className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors">
+                                                <div key={item.id} className="border border-border rounded-lg p-5 bg-card hover:border-primary/20 transition-all duration-200">
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex-1">
                                                             <div className="flex items-center gap-3">
-                                                                <div className="bg-primary/10 p-2 rounded-full">
-                                                                    <FileText className="h-5 w-5 text-primary" />
-                                                                </div>
+                                                                <FileText className="h-5 w-5 text-muted-foreground" />
                                                                 <div>
-                                                                    <h3 className="font-medium">
+                                                                    <h3 className="font-medium text-base">
                                                                         {item.meeting_name || "Untitled Meeting"}
                                                                     </h3>
                                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
@@ -380,7 +385,7 @@ const DigitalTrailmap = () => {
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             {item.trailmap_link && (
-                                                                <Button asChild variant="outline" size="sm">
+                                                                <Button asChild variant="outline" size="sm" className="border-border">
                                                                     <a href={item.trailmap_link} target="_blank" rel="noopener noreferrer">
                                                                         View Trailmap
                                                                     </a>
@@ -394,24 +399,37 @@ const DigitalTrailmap = () => {
                                                                     </a>
                                                                 </Button>
                                                             )}
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="sm"
-                                                                onClick={() => handleDelete(item)}
-                                                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                            >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </Button>
+                                                            <AlertDialog>
+                                                                <AlertDialogTrigger asChild>
+                                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </AlertDialogTrigger>
+                                                                <AlertDialogContent>
+                                                                    <AlertDialogHeader>
+                                                                        <AlertDialogTitle>Delete trailmap?</AlertDialogTitle>
+                                                                        <AlertDialogDescription>
+                                                                            This will permanently delete "{item.meeting_name || "Untitled Meeting"}" and the associated documents from Google Drive.
+                                                                        </AlertDialogDescription>
+                                                                    </AlertDialogHeader>
+                                                                    <AlertDialogFooter>
+                                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                        <AlertDialogAction onClick={() => handleDelete(item)} className="bg-destructive hover:bg-destructive/90">
+                                                                            Delete
+                                                                        </AlertDialogAction>
+                                                                    </AlertDialogFooter>
+                                                                </AlertDialogContent>
+                                                            </AlertDialog>
                                                         </div>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="text-center py-12 text-muted-foreground">
-                                            <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                                            <p>No trailmaps generated yet.</p>
-                                            <Button variant="link" onClick={() => setActiveTab("input")}>
+                                        <div className="text-center py-16 text-muted-foreground">
+                                            <FileText className="h-10 w-10 mx-auto mb-4 opacity-40" />
+                                            <p className="text-sm mb-2">No trailmaps yet</p>
+                                            <Button variant="link" onClick={() => setActiveTab("input")} className="text-sm">
                                                 Create your first trailmap
                                             </Button>
                                         </div>
@@ -420,42 +438,48 @@ const DigitalTrailmap = () => {
                             </Card>
                         </TabsContent>
 
-                        <TabsContent value="analytics" className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-3">
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Total Runs</CardTitle>
-                                        <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                        <TabsContent value="analytics" className="space-y-6 mt-0">
+                            <div className="grid gap-6 md:grid-cols-3">
+                                <Card className="border-border">
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="text-sm font-medium text-muted-foreground">Total Runs</CardTitle>
+                                            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                                        </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="text-2xl font-bold">{history.length}</div>
-                                        <p className="text-xs text-muted-foreground">
+                                        <div className="text-3xl font-semibold">{history.length}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
                                             Trailmaps generated
                                         </p>
                                     </CardContent>
                                 </Card>
 
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Total Cost</CardTitle>
-                                        <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                                <Card className="border-border">
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="text-sm font-medium text-muted-foreground">Total Cost</CardTitle>
+                                            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                                        </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="text-2xl font-bold">$0.00</div>
-                                        <p className="text-xs text-muted-foreground">
+                                        <div className="text-3xl font-semibold">$0.00</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
                                             API usage cost
                                         </p>
                                     </CardContent>
                                 </Card>
 
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Avg. Time</CardTitle>
-                                        <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                                <Card className="border-border">
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="text-sm font-medium text-muted-foreground">Avg. Time</CardTitle>
+                                            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                                        </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="text-2xl font-bold">0s</div>
-                                        <p className="text-xs text-muted-foreground">
+                                        <div className="text-3xl font-semibold">0s</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
                                             Generation time
                                         </p>
                                     </CardContent>

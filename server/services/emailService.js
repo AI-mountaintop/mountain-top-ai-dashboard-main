@@ -1,13 +1,15 @@
 import { google } from 'googleapis';
 import nodemailer from 'nodemailer';
+import { generateEmailHTML } from './emailTemplateGenerator.js';
 
 /**
  * Send email using Gmail API
  */
-export async function sendEmail({ to, subject, htmlContent }) {
+export async function sendEmail({ to, subject, htmlContent, jsonContent, meetingName, createdAt, completedItemIds = [] }) {
   try {
     console.log(`[Email] Attempting to send email to: ${to}`);
     console.log(`[Email] Subject: ${subject}`);
+    console.log(`[Email] Completed items to exclude: ${completedItemIds.length}`);
     
     // Check if we have Gmail credentials
     const gmailUser = process.env.GMAIL_USER;
@@ -19,6 +21,13 @@ export async function sendEmail({ to, subject, htmlContent }) {
     }
 
     console.log(`[Email] Using Gmail account: ${gmailUser}`);
+
+    // Generate email HTML from JSON content if available, otherwise use provided HTML
+    let emailHTML = htmlContent;
+    if (jsonContent) {
+      console.log('[Email] Generating email HTML from JSON content...');
+      emailHTML = generateEmailHTML(jsonContent, meetingName, createdAt, completedItemIds);
+    }
 
     // Create transporter using Gmail SMTP
     const transporter = nodemailer.createTransport({
@@ -39,7 +48,7 @@ export async function sendEmail({ to, subject, htmlContent }) {
       from: gmailUser,
       to: to,
       subject: subject,
-      html: htmlContent
+      html: emailHTML
     };
 
     console.log('[Email] Sending email...');

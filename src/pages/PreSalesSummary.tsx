@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Send, BarChart3, CheckCircle2, AlertCircle, Trash2, RefreshCw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 type SubmissionStatus = "success" | "error";
 
@@ -245,9 +257,6 @@ const PreSalesSummary = () => {
     };
 
     const deleteSubmission = async (id: string) => {
-        // Optimistic update
-        setSubmissions((prev) => prev.filter((entry) => entry.id !== id));
-
         try {
             const { error } = await supabase
                 .from('presales_summaries')
@@ -255,12 +264,12 @@ const PreSalesSummary = () => {
                 .eq('id', id);
 
             if (error) throw error;
+            
             toast.success("Submission deleted");
+            fetchHistory();
         } catch (error) {
             console.error("Error deleting submission:", error);
             toast.error("Failed to delete submission");
-            // Revert optimistic update if needed, but for now we'll just let the next fetch fix it
-            fetchHistory();
         }
     };
 
@@ -272,36 +281,31 @@ const PreSalesSummary = () => {
     }, [submissions]);
 
     return (
-        <div className="min-h-screen">
+        <div className="min-h-screen bg-background">
             <Sidebar />
-            <div className="ml-80">
-                <main className="container mx-auto px-4 py-8">
-                    <div className="mb-8">
-                        <h1 className="text-3xl font-bold">Pre-Sales Call Summary</h1>
-                        <p className="text-muted-foreground mt-2">
-                            Generate pre-sales call summaries by analyzing a prospect&apos;s website
-                        </p>
-                    </div>
+            <div className="ml-64">
+                <main className="container mx-auto px-12 py-12 max-w-6xl">
+                    <PageHeader 
+                        title="Pre-Sales Summary" 
+                        description="Generate pre-sales call summaries by analyzing a prospect's website"
+                    />
 
                     <Tabs value={activeTab} onValueChange={setActiveTab}>
-                        <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger value="input">Input</TabsTrigger>
-                            <TabsTrigger value="output">Submission History</TabsTrigger>
-                            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+                        <TabsList className="grid w-full grid-cols-3 bg-muted/50 mb-6">
+                            <TabsTrigger value="input" className="data-[state=active]:bg-background">Input</TabsTrigger>
+                            <TabsTrigger value="output" className="data-[state=active]:bg-background">Submission History</TabsTrigger>
+                            <TabsTrigger value="analytics" className="data-[state=active]:bg-background">Analytics</TabsTrigger>
                         </TabsList>
 
-                        <TabsContent value="input" className="space-y-4">
-                            <Card>
+                        <TabsContent value="input" className="space-y-6 mt-0">
+                            <Card className="border-border">
                                 <CardHeader>
-                                    <CardTitle className="flex items-center gap-2">
-                                        <FileText className="h-5 w-5" />
-                                        Website Analysis Input
-                                    </CardTitle>
+                                    <CardTitle className="text-lg font-semibold">Website Analysis Input</CardTitle>
                                     <CardDescription>
-                                        Enter a prospect&apos;s website URL and we&apos;ll generate a pre-sales call summary
+                                        Enter a prospect's website URL to generate a pre-sales call summary
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-4">
+                                <CardContent className="space-y-6">
                                     <div className="space-y-2">
                                         <Label htmlFor="company-name">Company Name</Label>
                                         <Input
@@ -327,7 +331,8 @@ const PreSalesSummary = () => {
                                     <Button
                                         onClick={submitSummaryRequest}
                                         disabled={isSubmitting}
-                                        className="w-full"
+                                        className="w-full bg-primary hover:bg-primary/90"
+                                        size="lg"
                                     >
                                         <Send className="h-4 w-4 mr-2" />
                                         {isSubmitting ? "Submitting..." : "Generate Pre-Sales Summary"}
@@ -336,42 +341,42 @@ const PreSalesSummary = () => {
                             </Card>
                         </TabsContent>
 
-                        <TabsContent value="output" className="space-y-4">
-                            <Card>
+                        <TabsContent value="output" className="space-y-6 mt-0">
+                            <Card className="border-border">
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <div>
-                                        <CardTitle>Submission History</CardTitle>
+                                        <CardTitle className="text-lg font-semibold">Submission History</CardTitle>
                                         <CardDescription>
                                             Track your recent pre-sales summary requests
                                         </CardDescription>
                                     </div>
-                                    <Button variant="outline" size="sm" onClick={fetchHistory} disabled={isLoadingHistory}>
+                                    <Button variant="outline" size="sm" onClick={fetchHistory} disabled={isLoadingHistory} className="border-border">
                                         <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingHistory ? 'animate-spin' : ''}`} />
                                         Refresh
                                     </Button>
                                 </CardHeader>
                                 <CardContent>
                                     {isLoadingHistory ? (
-                                        <div className="text-center py-12">
-                                            <RefreshCw className="h-8 w-8 animate-spin mx-auto text-muted-foreground mb-4" />
-                                            <p className="text-muted-foreground">Loading history...</p>
+                                        <div className="text-center py-16">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto mb-4"></div>
+                                            <p className="text-sm text-muted-foreground">Loading...</p>
                                         </div>
                                     ) : submissions.length > 0 ? (
                                         <div className="space-y-3">
                                             {submissions.map((entry) => (
                                                 <div
                                                     key={entry.id}
-                                                    className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors"
+                                                    className="border border-border rounded-lg p-5 bg-card hover:border-primary/20 transition-all duration-200"
                                                 >
                                                     <div className="flex items-start justify-between gap-4">
                                                         <div className="space-y-1 flex-1">
                                                             <div className="flex items-center gap-2">
                                                                 {entry.status === "success" ? (
-                                                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                                                    <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
                                                                 ) : (
-                                                                    <AlertCircle className="h-4 w-4 text-red-500" />
+                                                                    <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
                                                                 )}
-                                                                <span className="font-medium">{entry.companyName}</span>
+                                                                <span className="font-medium text-base">{entry.companyName}</span>
                                                             </div>
                                                             <p className="text-sm text-muted-foreground">
                                                                 {entry.url}
@@ -379,17 +384,12 @@ const PreSalesSummary = () => {
                                                             <p className="text-xs text-muted-foreground">
                                                                 {new Date(entry.createdAt).toLocaleString()}
                                                             </p>
-                                                            {entry.message && (
-                                                                <p className="text-sm text-muted-foreground">
-                                                                    {entry.message}
-                                                                </p>
-                                                            )}
                                                             {entry.fileUrl && (
                                                                 <div className="pt-2">
                                                                     <Button
                                                                         variant="outline"
                                                                         size="sm"
-                                                                        className="gap-2"
+                                                                        className="gap-2 border-border"
                                                                         onClick={() => window.open(entry.fileUrl, '_blank')}
                                                                     >
                                                                         <ExternalLink className="h-3 w-3" />
@@ -399,32 +399,41 @@ const PreSalesSummary = () => {
                                                             )}
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            <span
-                                                                className={`text-xs px-2 py-1 rounded-full border ${entry.status === "success"
-                                                                    ? "border-green-200 bg-green-50 text-green-700"
-                                                                    : "border-red-200 bg-red-50 text-red-700"
-                                                                    }`}
-                                                            >
-                                                                {entry.status === "success" ? "Success" : "Error"}
-                                                            </span>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                onClick={() => deleteSubmission(entry.id)}
-                                                                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                                                            >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </Button>
+                                                            <AlertDialog>
+                                                                <AlertDialogTrigger asChild>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </AlertDialogTrigger>
+                                                                <AlertDialogContent>
+                                                                    <AlertDialogHeader>
+                                                                        <AlertDialogTitle>Delete submission?</AlertDialogTitle>
+                                                                        <AlertDialogDescription>
+                                                                            This will permanently delete the submission for "{entry.companyName}".
+                                                                        </AlertDialogDescription>
+                                                                    </AlertDialogHeader>
+                                                                    <AlertDialogFooter>
+                                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                        <AlertDialogAction onClick={() => deleteSubmission(entry.id)} className="bg-destructive hover:bg-destructive/90">
+                                                                            Delete
+                                                                        </AlertDialogAction>
+                                                                    </AlertDialogFooter>
+                                                                </AlertDialogContent>
+                                                            </AlertDialog>
                                                         </div>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="text-center py-12 text-muted-foreground">
-                                            <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                                            <p>No submissions yet.</p>
-                                            <Button variant="link" onClick={() => setActiveTab("input")}>
+                                        <div className="text-center py-16 text-muted-foreground">
+                                            <FileText className="h-10 w-10 mx-auto mb-4 opacity-40" />
+                                            <p className="text-sm mb-2">No submissions yet</p>
+                                            <Button variant="link" onClick={() => setActiveTab("input")} className="text-sm">
                                                 Start with a website URL
                                             </Button>
                                         </div>
@@ -433,43 +442,49 @@ const PreSalesSummary = () => {
                             </Card>
                         </TabsContent>
 
-                        <TabsContent value="analytics" className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-3">
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
-                                        <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                        <TabsContent value="analytics" className="space-y-6 mt-0">
+                            <div className="grid gap-6 md:grid-cols-3">
+                                <Card className="border-border">
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="text-sm font-medium text-muted-foreground">Total Requests</CardTitle>
+                                            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                                        </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="text-2xl font-bold">{analytics.total}</div>
-                                        <p className="text-xs text-muted-foreground">
-                                            All pre-sales summary submissions
+                                        <div className="text-3xl font-semibold">{analytics.total}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            All submissions
                                         </p>
                                     </CardContent>
                                 </Card>
 
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Successful</CardTitle>
-                                        <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                                <Card className="border-border">
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="text-sm font-medium text-muted-foreground">Successful</CardTitle>
+                                            <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                                        </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="text-2xl font-bold text-green-700">{analytics.success}</div>
-                                        <p className="text-xs text-muted-foreground">
-                                            Requests accepted by the webhook
+                                        <div className="text-3xl font-semibold text-green-700">{analytics.success}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Requests accepted
                                         </p>
                                     </CardContent>
                                 </Card>
 
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                        <CardTitle className="text-sm font-medium">Failed</CardTitle>
-                                        <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                                <Card className="border-border">
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="text-sm font-medium text-muted-foreground">Failed</CardTitle>
+                                            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                                        </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="text-2xl font-bold text-red-600">{analytics.failed}</div>
-                                        <p className="text-xs text-muted-foreground">
-                                            Requests that returned an error
+                                        <div className="text-3xl font-semibold text-red-600">{analytics.failed}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Requests failed
                                         </p>
                                     </CardContent>
                                 </Card>
