@@ -33,6 +33,7 @@ interface MeetingData {
     html_content: string;
     json_content: any;
     google_drive_link: string;
+    meetgeek_url?: string;
     created_at: string;
 }
 
@@ -276,7 +277,7 @@ const MeetingMinutesDetail = () => {
                     <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => navigate('/meeting-actions')}
+                        onClick={() => navigate('/meeting-actions?tab=output')}
                         className="mb-6 -ml-2 text-muted-foreground hover:text-foreground"
                     >
                         <ArrowLeft className="h-4 w-4 mr-2" />
@@ -304,6 +305,17 @@ const MeetingMinutesDetail = () => {
                                     <span className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs font-medium">
                                         {meetingInfo.duration}
                                     </span>
+                                )}
+                                {(meetingInfo.recording_link || meeting.meetgeek_url) && (
+                                    <a 
+                                        href={meetingInfo.recording_link || meeting.meetgeek_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 rounded-md text-xs font-medium hover:bg-blue-100 transition-colors"
+                                    >
+                                        <ExternalLink className="h-3 w-3" />
+                                        Meeting Link
+                                    </a>
                                 )}
                             </div>
                         </div>
@@ -349,6 +361,37 @@ const MeetingMinutesDetail = () => {
                                         </div>
                                     ))}
                                 </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Sentiment */}
+                    {sentiment.score && (
+                        <Card className="border-border mb-6">
+                            <CardHeader className="pb-4">
+                                <div className="flex items-center gap-2">
+                                    <TrendingUp className="h-4 w-4 text-blue-500" />
+                                    <CardTitle className="text-base font-medium">Meeting Sentiment</CardTitle>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex items-center gap-4 mb-3">
+                                    <span className="text-3xl font-semibold text-green-600">{sentiment.score}/5</span>
+                                    <div className="flex gap-1">
+                                        {[1, 2, 3, 4, 5].map((star) => (
+                                            <div 
+                                                key={star}
+                                                className={cn(
+                                                    "w-2 h-6 rounded-sm",
+                                                    star <= sentiment.score ? "bg-green-500" : "bg-muted"
+                                                )}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                                {sentiment.summary && (
+                                    <p className="text-sm text-muted-foreground">{sentiment.summary}</p>
+                                )}
                             </CardContent>
                         </Card>
                     )}
@@ -437,12 +480,6 @@ const MeetingMinutesDetail = () => {
                                         <span className="text-sm text-muted-foreground">
                                             {completedCount} of {totalItems} completed
                                         </span>
-                                        <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
-                                            <div 
-                                                className="h-full bg-orange-500 rounded-full transition-all duration-300"
-                                                style={{ width: `${totalItems > 0 ? (completedCount / totalItems) * 100 : 0}%` }}
-                                            />
-                                        </div>
                                         {expandedSections.has('actions') ? (
                                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
                                         ) : (
@@ -453,24 +490,27 @@ const MeetingMinutesDetail = () => {
                             </CardHeader>
                             {expandedSections.has('actions') && (
                                 <CardContent className="pt-0">
-                                    <div className="space-y-2">
+                                    <div className="space-y-1">
                                         {actionItems.map((item) => (
-                                            <div key={item.id} className="border border-border rounded-lg overflow-hidden">
-                                                {/* Main Task Row */}
+                                            <div key={item.id}>
+                                                {/* Main Task Row - Compact Style with Fixed Widths */}
                                                 <div 
                                                     className={cn(
-                                                        "flex items-center gap-4 p-4 transition-colors",
-                                                        completedItems.has(item.id) ? "bg-muted/30" : "bg-card hover:bg-muted/20"
+                                                        "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors group",
+                                                        completedItems.has(item.id) ? "bg-muted/30" : "hover:bg-muted/20"
                                                     )}
                                                 >
                                                     {/* Checkbox */}
                                                     <button
-                                                        onClick={() => toggleItemComplete(item.id)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleItemComplete(item.id);
+                                                        }}
                                                         className={cn(
                                                             "w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all",
                                                             completedItems.has(item.id) 
                                                                 ? "bg-green-500 border-green-500" 
-                                                                : "border-muted-foreground/30 hover:border-primary"
+                                                                : "border-muted-foreground/30 hover:border-orange-500"
                                                         )}
                                                     >
                                                         {completedItems.has(item.id) && (
@@ -478,7 +518,7 @@ const MeetingMinutesDetail = () => {
                                                         )}
                                                     </button>
 
-                                                    {/* Task Content */}
+                                                    {/* Task Title - Flexible width */}
                                                     <div className="flex-1 min-w-0">
                                                         <p className={cn(
                                                             "text-sm font-medium",
@@ -486,67 +526,86 @@ const MeetingMinutesDetail = () => {
                                                         )}>
                                                             {item.task}
                                                         </p>
-                                                        {item.subtasks && item.subtasks.length > 0 && (
-                                                            <p className="text-xs text-muted-foreground mt-1">
+                                                        {item.subtasks && item.subtasks.length > 0 && !expandedItems.has(item.id) && (
+                                                            <p className="text-xs text-muted-foreground mt-0.5">
                                                                 {item.subtasks.length} subtask{item.subtasks.length > 1 ? 's' : ''}
                                                             </p>
                                                         )}
                                                     </div>
 
-                                                    {/* Assignee */}
-                                                    {item.assignee && (
-                                                        <span className="text-xs bg-muted px-2 py-1 rounded">
-                                                            {item.assignee}
+                                                    {/* Assignee - Fixed width */}
+                                                    <div className="w-24 text-right flex-shrink-0">
+                                                        {item.assignee && (
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {item.assignee}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Deadline - Fixed width */}
+                                                    <div className="w-28 text-right flex-shrink-0">
+                                                        {item.deadline && (
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {item.deadline}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Priority Badge - Fixed width */}
+                                                    <div className="w-20 flex-shrink-0 text-right">
+                                                        <span className={cn(
+                                                            "inline-block text-xs px-2.5 py-1 rounded-md font-medium",
+                                                            (item.priority === 'P1' || item.priority === 'High')
+                                                                ? "bg-red-50 text-red-700" 
+                                                                : (item.priority === 'P2' || item.priority === 'Medium')
+                                                                ? "bg-orange-50 text-orange-700"
+                                                                : (item.priority === 'P3')
+                                                                ? "bg-yellow-50 text-yellow-700"
+                                                                : "bg-green-50 text-green-700"
+                                                        )}>
+                                                            {item.priority === 'P1' ? 'High' : 
+                                                             item.priority === 'P2' ? 'Medium' :
+                                                             item.priority === 'P3' ? 'Medium' :
+                                                             item.priority === 'P4' ? 'Low' :
+                                                             item.priority}
                                                         </span>
-                                                    )}
+                                                    </div>
 
-                                                    {/* Deadline */}
-                                                    {item.deadline && (
-                                                        <span className="text-xs text-muted-foreground">
-                                                            {item.deadline}
-                                                        </span>
-                                                    )}
-
-                                                    {/* Priority */}
-                                                    <span className={cn(
-                                                        "text-xs px-2 py-1 rounded border font-medium",
-                                                        getPriorityColor(item.priority)
-                                                    )}>
-                                                        {item.priority}
-                                                    </span>
-
-                                                    {/* Expand Button */}
-                                                    {item.subtasks && item.subtasks.length > 0 && (
-                                                        <button
-                                                            onClick={() => toggleItemExpand(item.id)}
-                                                            className="p-1 hover:bg-muted rounded transition-colors"
-                                                        >
-                                                            {expandedItems.has(item.id) ? (
-                                                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                                            ) : (
-                                                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                                                            )}
-                                                        </button>
-                                                    )}
+                                                    {/* Expand Arrow - Only if has subtasks */}
+                                                    <div className="w-6 flex-shrink-0">
+                                                        {item.subtasks && item.subtasks.length > 0 && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    toggleItemExpand(item.id);
+                                                                }}
+                                                                className="p-1 hover:bg-muted rounded transition-colors"
+                                                            >
+                                                                {expandedItems.has(item.id) ? (
+                                                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                                                ) : (
+                                                                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                                                )}
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
 
-                                                {/* Subtasks */}
+                                                {/* Subtasks - Expanded */}
                                                 {expandedItems.has(item.id) && item.subtasks && item.subtasks.length > 0 && (
-                                                    <div className="border-t border-border bg-muted/10 px-4 py-3">
-                                                        <div className="space-y-2 ml-9">
-                                                            {item.subtasks.map((subtask, stIndex) => (
-                                                                <div key={stIndex} className="flex items-center gap-3 text-sm">
-                                                                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40"></span>
-                                                                    <span className="flex-1 text-muted-foreground">{subtask.task}</span>
-                                                                    {subtask.assignee && (
-                                                                        <span className="text-xs text-muted-foreground">({subtask.assignee})</span>
-                                                                    )}
-                                                                    {subtask.deadline && (
-                                                                        <span className="text-xs text-muted-foreground">{subtask.deadline}</span>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
+                                                    <div className="ml-12 mr-4 mb-2 space-y-1.5 mt-1">
+                                                        {item.subtasks.map((subtask, stIndex) => (
+                                                            <div key={stIndex} className="flex items-start gap-2 text-sm py-1.5 px-3 rounded bg-muted/30">
+                                                                <span className="w-1 h-1 rounded-full bg-muted-foreground/40 mt-2 flex-shrink-0"></span>
+                                                                <span className="flex-1 text-muted-foreground">{subtask.task}</span>
+                                                                {subtask.assignee && (
+                                                                    <span className="text-xs text-muted-foreground">({subtask.assignee})</span>
+                                                                )}
+                                                                {subtask.deadline && (
+                                                                    <span className="text-xs text-muted-foreground">{subtask.deadline}</span>
+                                                                )}
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 )}
                                             </div>
@@ -554,37 +613,6 @@ const MeetingMinutesDetail = () => {
                                     </div>
                                 </CardContent>
                             )}
-                        </Card>
-                    )}
-
-                    {/* Sentiment */}
-                    {sentiment.score && (
-                        <Card className="border-border mb-6">
-                            <CardHeader className="pb-4">
-                                <div className="flex items-center gap-2">
-                                    <TrendingUp className="h-4 w-4 text-blue-500" />
-                                    <CardTitle className="text-base font-medium">Meeting Sentiment</CardTitle>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center gap-4 mb-3">
-                                    <span className="text-3xl font-semibold text-green-600">{sentiment.score}/5</span>
-                                    <div className="flex gap-1">
-                                        {[1, 2, 3, 4, 5].map((star) => (
-                                            <div 
-                                                key={star}
-                                                className={cn(
-                                                    "w-2 h-6 rounded-sm",
-                                                    star <= sentiment.score ? "bg-green-500" : "bg-muted"
-                                                )}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                                {sentiment.summary && (
-                                    <p className="text-sm text-muted-foreground">{sentiment.summary}</p>
-                                )}
-                            </CardContent>
                         </Card>
                     )}
 

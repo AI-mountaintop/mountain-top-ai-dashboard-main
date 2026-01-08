@@ -71,7 +71,15 @@ CRITICAL REQUIREMENTS FOR PARTICIPANTS:
 
 CRITICAL REQUIREMENTS FOR ACTION ITEMS:
 1. Extract EVERY action item, task, or to-do mentioned in the meeting
-2. Categorize each action item into the appropriate category:
+2. GROUP RELATED TASKS: If multiple tasks are related to the same topic/project, make ONE main task with subtasks
+   - Example: If there are 3 tasks about "website updates", create ONE main task "Website Updates" with 3 subtasks
+   - Example: If someone needs to "send images" and "resize images", group under main task with subtasks
+3. ALWAYS CREATE SUBTASKS when:
+   - Multiple steps are needed to complete a task
+   - Related tasks are assigned to the same person
+   - Tasks are part of the same project or initiative
+   - A task has dependencies or sequential steps
+4. Categorize each action item into the appropriate category:
    - General Operations: Administrative tasks, scheduling, coordination
    - Branding & Marketing QC: Content creation, editorial, branding, design
    - Digital Ad Management: Advertising strategy, influencer outreach, campaigns
@@ -79,27 +87,28 @@ CRITICAL REQUIREMENTS FOR ACTION ITEMS:
    - Sales & Pricing: Budget, pricing, proposals, revenue
    - Customer Reviews & Communication: Customer engagement, feedback, reviews
    - Operational: Day-to-day operations, logistics, fulfillment
-3. Assign priority P1-P4 based on:
+5. Assign priority P1-P4 based on:
    - P1: Urgent, blocking other work, ASAP deadline
    - P2: Important, needed soon, before next meeting
    - P3: Medium priority, within 1-2 weeks
    - P4: Lower priority, nice to have, flexible timeline
-4. Write DETAILED descriptions (2-4 sentences) including:
+6. Write DETAILED descriptions (2-4 sentences) including:
    - What needs to be done
    - Why it's important
    - Any dependencies or context
    - Expected outcome
-5. Break complex tasks into subtasks when appropriate
-6. Include specific names, dates, and details from the transcript
-7. For executive summary, provide 8-12 comprehensive bullet points covering ALL major topics discussed
+7. Include specific names, dates, and details from the transcript
+8. For executive summary, provide 8-12 comprehensive bullet points covering ALL major topics discussed
+9. AIM FOR 5-15 MAIN ACTION ITEMS with subtasks, NOT 20+ separate items
 
 RULES:
 1. Extract ALL participant names from the transcript - this is CRITICAL
 2. Be thorough - capture every action item mentioned
 3. Use specific deadlines when mentioned (dates, "ASAP", "before next meeting", etc.)
-4. Group related subtasks under parent tasks
+4. GROUP related tasks under parent tasks with subtasks - this is CRITICAL
 5. Keep summaries detailed and informative
-6. Include all context and nuance from the discussion`;
+6. Include all context and nuance from the discussion
+7. Each main task should have 2-5 subtasks when the work involves multiple steps`;
 
 export async function generateActionItemsJSON({ meetingTitle, meetingSummary, sentimentAnalysis, actionItems, meetingLink, transcript }) {
   const userPrompt = `Analyze this meeting data and return structured JSON with COMPREHENSIVE, DETAILED action items.
@@ -129,14 +138,23 @@ CRITICAL INSTRUCTIONS:
    - Infer roles from context (job titles, departments, what they discuss)
    - Include EVERYONE who participated, even briefly
 
-2. Extract EVERY single action item, task, or to-do mentioned
-3. For EACH action item, write a DETAILED description (3-5 sentences)
-4. Break down complex tasks into multiple subtasks (aim for 2-5 subtasks per major task)
-5. Assign specific people mentioned in the meeting to tasks
-6. Use exact deadlines mentioned (dates, "ASAP", "before next meeting", "end of week", etc.)
-7. Categorize each task appropriately
-8. Set priority P1-P4 based on urgency and importance
-9. Include 10-15 comprehensive executive summary points covering ALL discussion areas
+2. ACTION ITEMS WITH SUBTASKS - CRITICAL:
+   - GROUP related tasks together under ONE main task with subtasks
+   - If 3 tasks are about "images", make ONE main task "Image Updates" with 3 subtasks
+   - If someone has multiple related tasks, group them under one main task
+   - EVERY main task should have 2-5 subtasks when possible
+   - Aim for 5-15 main action items total, NOT 20+ separate items
+   
+3. For EACH main action item:
+   - Write a clear, concise task title
+   - Add 2-5 subtasks breaking down the work
+   - Write a DETAILED description (3-5 sentences)
+   - Assign specific people mentioned in the meeting
+   - Use exact deadlines mentioned (dates, "ASAP", "before next meeting", "end of week", etc.)
+   - Categorize each task appropriately
+   - Set priority P1-P4 based on urgency and importance
+
+4. Include 10-15 comprehensive executive summary points covering ALL discussion areas
 
 Return ONLY valid JSON matching the schema. No markdown formatting.`;
 

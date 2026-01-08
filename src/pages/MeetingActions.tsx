@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,13 +47,18 @@ interface MeetingActionItem {
 
 const MeetingActions = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { startJob, getActiveJobByType, getProgressByType } = useJobProgress();
     
     const [inputType, setInputType] = useState<"link" | "transcript">("link");
     const [meetGeekUrl, setMeetGeekUrl] = useState("");
     const [meetingTranscript, setMeetingTranscript] = useState("");
     const [meetingTitle, setMeetingTitle] = useState("");
-    const [activeTab, setActiveTab] = useState("input");
+    const [activeTab, setActiveTab] = useState(() => {
+        // Check URL for tab parameter
+        const tabParam = searchParams.get('tab');
+        return tabParam === 'output' || tabParam === 'analytics' ? tabParam : 'input';
+    });
 
     // History state
     const [history, setHistory] = useState<MeetingActionItem[]>([]);

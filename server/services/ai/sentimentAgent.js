@@ -47,8 +47,8 @@ Focus on **emotional cues**, **tone indicators**, **engagement levels**, and **c
 **Overall Meeting Sentiment:** [Rating]/5
 
 **Sentiment Analysis Summary:**
-- [First bullet point: 1-2 sentences explaining the overall meeting tone with specific evidence]
-- [Second bullet point: 1-2 sentences highlighting key emotional dynamics or patterns observed]
+- [First bullet point: 2-3 sentences explaining the overall meeting tone with specific evidence]
+- [Second bullet point: 2-3 sentences highlighting key emotional dynamics or patterns observed]
 - [Third bullet point: 1-2 sentences noting any significant concerns, positive moments, or recommendations]
 \`\`\`
 

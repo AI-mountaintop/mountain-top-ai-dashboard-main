@@ -36,7 +36,10 @@ function parseHTMLContent(html) {
           if (text) content.push({ type: 'heading3', text }); // Map h4 to heading3
         } else if (tagName === 'p') {
           const text = node.textContent.trim();
-          if (text) content.push({ type: 'paragraph', text });
+          // Only add non-empty paragraphs
+          if (text && text.length > 0) {
+            content.push({ type: 'paragraph', text });
+          }
         } else if (tagName === 'li') {
           const text = node.textContent.trim();
           if (text) content.push({ type: 'bullet', text, level });
@@ -57,7 +60,7 @@ function parseHTMLContent(html) {
             content.push({ type: 'paragraph', text });
           }
         } else if (tagName === 'br') {
-          // Skip line breaks
+          // Skip line breaks - they create empty space
         } else {
           // For any other element, process children
           Array.from(node.childNodes).forEach(child => processNode(child, level, inList));
@@ -68,9 +71,16 @@ function parseHTMLContent(html) {
     const body = document.body || document.documentElement;
     Array.from(body.childNodes).forEach(node => processNode(node));
     
-    console.log(`Parsed ${content.length} content blocks from HTML`);
+    // Filter out any empty content blocks
+    const filteredContent = content.filter(block => {
+      if (!block.text) return false;
+      const trimmed = block.text.trim();
+      return trimmed.length > 0 && trimmed !== '\n' && trimmed !== '\r\n';
+    });
     
-    return content;
+    console.log(`Parsed ${filteredContent.length} content blocks from HTML (filtered from ${content.length})`);
+    
+    return filteredContent;
   } catch (error) {
     console.error('Error parsing HTML:', error);
     return [];
@@ -86,8 +96,9 @@ export async function createMeetingActionItemsDoc({ meetingName, jsonContent, fo
     const docs = google.docs({ version: 'v1', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    // Step 1: Create empty document
     console.log('Creating Google Doc for meeting action items...');
+    
+    // Step 1: Create empty document
     const createResponse = await drive.files.create({
       requestBody: {
         name: meetingName,
@@ -100,157 +111,113 @@ export async function createMeetingActionItemsDoc({ meetingName, jsonContent, fo
     const documentId = createResponse.data.id;
     console.log(`Document created with ID: ${documentId}`);
 
-    // Step 2: Build content from JSON
-    const requests = [];
-    let currentIndex = 1;
-
     const { meeting, participants, executive_summary, decisions_made, action_items, sentiment, next_steps } = jsonContent || {};
 
+    // Build all text content first (before table)
+    let textContent = '';
+    
     // Title
     const title = meeting?.title || meetingName || 'Meeting Minutes';
-    requests.push({
-      insertText: { location: { index: currentIndex }, text: title + '\n' }
-    });
-    requests.push({
-      updateParagraphStyle: {
-        range: { startIndex: currentIndex, endIndex: currentIndex + title.length },
-        paragraphStyle: { namedStyleType: 'HEADING_1' },
-        fields: 'namedStyleType'
-      }
-    });
-    currentIndex += title.length + 1;
-
+    textContent += title + '\n\n';
+    
     // Meeting info
     if (meeting?.date || meeting?.time || meeting?.duration) {
       const metaText = [meeting?.date, meeting?.time, meeting?.duration].filter(Boolean).join(' | ');
-      requests.push({
-        insertText: { location: { index: currentIndex }, text: metaText + '\n\n' }
-      });
-      currentIndex += metaText.length + 2;
+      textContent += metaText + '\n\n';
     }
 
     // Participants
     if (participants?.length > 0) {
-      requests.push({
-        insertText: { location: { index: currentIndex }, text: 'Participants\n' }
+      textContent += 'Participants\n';
+      participants.forEach(p => {
+        textContent += `${p.name}${p.role ? ` - ${p.role}` : ''}\n`;
       });
-      requests.push({
-        updateParagraphStyle: {
-          range: { startIndex: currentIndex, endIndex: currentIndex + 12 },
-          paragraphStyle: { namedStyleType: 'HEADING_2' },
-          fields: 'namedStyleType'
-        }
-      });
-      currentIndex += 13;
-
-      const participantText = participants.map(p => `${p.name}${p.role ? ` (${p.role})` : ''}`).join(', ') + '\n\n';
-      requests.push({
-        insertText: { location: { index: currentIndex }, text: participantText }
-      });
-      currentIndex += participantText.length;
+      textContent += '\n';
     }
 
     // Executive Summary
     if (executive_summary?.length > 0) {
-      requests.push({
-        insertText: { location: { index: currentIndex }, text: 'Executive Summary\n' }
+      textContent += 'Executive Summary\n\n';
+      executive_summary.forEach(item => {
+        textContent += `• ${item}\n`;
       });
-      requests.push({
-        updateParagraphStyle: {
-          range: { startIndex: currentIndex, endIndex: currentIndex + 17 },
-          paragraphStyle: { namedStyleType: 'HEADING_2' },
-          fields: 'namedStyleType'
-        }
-      });
-      currentIndex += 18;
-
-      for (const item of executive_summary) {
-        requests.push({
-          insertText: { location: { index: currentIndex }, text: item + '\n' }
-        });
-        requests.push({
-          createParagraphBullets: {
-            range: { startIndex: currentIndex, endIndex: currentIndex + item.length + 1 },
-            bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE'
-          }
-        });
-        currentIndex += item.length + 1;
-      }
-      requests.push({
-        insertText: { location: { index: currentIndex }, text: '\n' }
-      });
-      currentIndex += 1;
+      textContent += '\n';
     }
 
     // Decisions Made
     if (decisions_made?.length > 0) {
-      requests.push({
-        insertText: { location: { index: currentIndex }, text: 'Decisions Made\n' }
+      textContent += 'Decisions Made\n\n';
+      decisions_made.forEach(item => {
+        textContent += `• ${item}\n`;
       });
-      requests.push({
-        updateParagraphStyle: {
-          range: { startIndex: currentIndex, endIndex: currentIndex + 14 },
-          paragraphStyle: { namedStyleType: 'HEADING_2' },
-          fields: 'namedStyleType'
-        }
-      });
-      currentIndex += 15;
-
-      for (const item of decisions_made) {
-        requests.push({
-          insertText: { location: { index: currentIndex }, text: item + '\n' }
-        });
-        requests.push({
-          createParagraphBullets: {
-            range: { startIndex: currentIndex, endIndex: currentIndex + item.length + 1 },
-            bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE'
-          }
-        });
-        currentIndex += item.length + 1;
-      }
-      requests.push({
-        insertText: { location: { index: currentIndex }, text: '\n' }
-      });
-      currentIndex += 1;
+      textContent += '\n';
     }
 
     // Action Items Header
     if (action_items?.length > 0) {
-      requests.push({
-        insertText: { location: { index: currentIndex }, text: 'Action Items\n\n' }
-      });
-      requests.push({
-        updateParagraphStyle: {
-          range: { startIndex: currentIndex, endIndex: currentIndex + 12 },
-          paragraphStyle: { namedStyleType: 'HEADING_2' },
-          fields: 'namedStyleType'
-        }
-      });
-      currentIndex += 14;
+      textContent += 'Action Items\n\n';
     }
 
-    // Apply initial content before table
-    if (requests.length > 0) {
-      console.log(`Applying ${requests.length} initial content requests...`);
-      const chunkSize = 100;
-      for (let i = 0; i < requests.length; i += chunkSize) {
-        const chunk = requests.slice(i, i + chunkSize);
-        await docs.documents.batchUpdate({
-          documentId,
-          requestBody: { requests: chunk }
+    // Insert all text content first
+    await docs.documents.batchUpdate({
+      documentId,
+      requestBody: {
+        requests: [{
+          insertText: {
+            location: { index: 1 },
+            text: textContent
+          }
+        }]
+      }
+    });
+
+    // Apply formatting to headers
+    const formatRequests = [];
+    let searchIndex = 1;
+    
+    // Title formatting
+    formatRequests.push({
+      updateParagraphStyle: {
+        range: { startIndex: 1, endIndex: 1 + title.length },
+        paragraphStyle: { namedStyleType: 'HEADING_1' },
+        fields: 'namedStyleType'
+      }
+    });
+
+    // Find and format section headers
+    const headers = ['Participants', 'Executive Summary', 'Decisions Made', 'Action Items'];
+    let currentPos = 1;
+    
+    for (const header of headers) {
+      const headerIndex = textContent.indexOf(header);
+      if (headerIndex !== -1) {
+        formatRequests.push({
+          updateParagraphStyle: {
+            range: { startIndex: 1 + headerIndex, endIndex: 1 + headerIndex + header.length },
+            paragraphStyle: { namedStyleType: 'HEADING_2' },
+            fields: 'namedStyleType'
+          }
         });
       }
     }
 
-    // Create Action Items Table
+    // Apply formatting
+    if (formatRequests.length > 0) {
+      await docs.documents.batchUpdate({
+        documentId,
+        requestBody: { requests: formatRequests }
+      });
+    }
+
+    // Now create the action items table
     if (action_items?.length > 0) {
-      // Get current document to find end index
+      // Get current document state
       const docState = await docs.documents.get({ documentId });
       const endIndex = docState.data.body.content[docState.data.body.content.length - 1].endIndex - 1;
 
-      // Insert table
+      // Create table with 5 columns: Priority, Type, Task, Assignee, Deadline
       const numRows = action_items.length + 1; // +1 for header
-      const numCols = 4; // Task, Assignee, Deadline, Priority
+      const numCols = 5;
 
       await docs.documents.batchUpdate({
         documentId,
@@ -265,104 +232,159 @@ export async function createMeetingActionItemsDoc({ meetingName, jsonContent, fo
         }
       });
 
-      // Get updated document to find table
-      const updatedDoc = await docs.documents.get({ documentId });
-      const tableElement = updatedDoc.data.body.content.find(el => el.table);
-      
-      if (tableElement && tableElement.table) {
-        const tableRequests = [];
+      // Get the table structure
+      const docWithTable = await docs.documents.get({ documentId });
+      const tableElement = docWithTable.data.body.content.find(el => el.table);
+
+      if (tableElement?.table) {
         const table = tableElement.table;
         
+        // Prepare all cell content - we need to insert from END to START to avoid index shifting
+        const cellInserts = [];
+        
+        // Collect all cell data first
+        const allCellData = [];
+        
         // Header row
-        const headers = ['Task', 'Assignee', 'Deadline', 'Priority'];
+        const headers = ['Priority', 'Type', 'Task', 'Assignee', 'Deadline'];
+        const headerRow = table.tableRows[0];
         for (let col = 0; col < numCols; col++) {
-          const cell = table.tableRows[0].tableCells[col];
-          const cellStartIndex = cell.content[0].startIndex;
-          
-          tableRequests.push({
-            insertText: {
-              location: { index: cellStartIndex },
-              text: headers[col]
-            }
-          });
+          const cell = headerRow.tableCells[col];
+          if (cell?.content?.[0]?.startIndex) {
+            allCellData.push({
+              index: cell.content[0].startIndex,
+              text: headers[col],
+              isBold: true
+            });
+          }
         }
 
-        // Apply headers first
-        if (tableRequests.length > 0) {
+        // Data rows
+        for (let row = 1; row <= action_items.length; row++) {
+          const item = action_items[row - 1];
+          const tableRow = table.tableRows[row];
+          
+          if (!tableRow) continue;
+
+          // Priority (convert P1/P2/P3/P4 to High/Medium/Low)
+          let priorityText = item.priority || 'Medium';
+          if (priorityText === 'P1') priorityText = 'High';
+          else if (priorityText === 'P2') priorityText = 'Medium';
+          else if (priorityText === 'P3') priorityText = 'Medium';
+          else if (priorityText === 'P4') priorityText = 'Low';
+          
+          const priorityCell = tableRow.tableCells[0];
+          if (priorityCell?.content?.[0]?.startIndex) {
+            allCellData.push({
+              index: priorityCell.content[0].startIndex,
+              text: priorityText,
+              isBold: false
+            });
+          }
+
+          // Type
+          const typeCell = tableRow.tableCells[1];
+          if (typeCell?.content?.[0]?.startIndex) {
+            allCellData.push({
+              index: typeCell.content[0].startIndex,
+              text: item.type || item.category || '-',
+              isBold: false
+            });
+          }
+
+          // Task (with details and subtasks)
+          let taskText = item.task || '';
+          if (item.details) {
+            taskText += '\n\n' + item.details;
+          }
+          if (item.subtasks?.length > 0) {
+            taskText += '\n\nSubtasks:';
+            item.subtasks.forEach(st => {
+              taskText += `\n• ${st.task}`;
+              if (st.assignee) taskText += ` (${st.assignee})`;
+              if (st.deadline) taskText += ` - ${st.deadline}`;
+            });
+          }
+          const taskCell = tableRow.tableCells[2];
+          if (taskCell?.content?.[0]?.startIndex) {
+            allCellData.push({
+              index: taskCell.content[0].startIndex,
+              text: taskText,
+              isBold: false,
+              boldFirstLine: true
+            });
+          }
+
+          // Assignee
+          const assigneeCell = tableRow.tableCells[3];
+          if (assigneeCell?.content?.[0]?.startIndex) {
+            allCellData.push({
+              index: assigneeCell.content[0].startIndex,
+              text: item.assignee || '-',
+              isBold: false
+            });
+          }
+
+          // Deadline
+          const deadlineCell = tableRow.tableCells[4];
+          if (deadlineCell?.content?.[0]?.startIndex) {
+            allCellData.push({
+              index: deadlineCell.content[0].startIndex,
+              text: item.deadline || '-',
+              isBold: false
+            });
+          }
+        }
+
+        // Sort by index descending (insert from end to start)
+        allCellData.sort((a, b) => b.index - a.index);
+
+        // Create insert requests
+        const insertRequests = allCellData.map(cell => ({
+          insertText: {
+            location: { index: cell.index },
+            text: cell.text
+          }
+        }));
+
+        // Apply all inserts
+        if (insertRequests.length > 0) {
+          console.log(`Inserting ${insertRequests.length} table cells...`);
           await docs.documents.batchUpdate({
             documentId,
-            requestBody: { requests: tableRequests }
+            requestBody: { requests: insertRequests }
           });
         }
 
-        // Get updated doc for data rows
-        const docWithHeaders = await docs.documents.get({ documentId });
-        const tableWithHeaders = docWithHeaders.data.body.content.find(el => el.table);
+        // Now apply bold formatting to headers and task titles
+        const updatedDoc = await docs.documents.get({ documentId });
+        const updatedTable = updatedDoc.data.body.content.find(el => el.table);
         
-        if (tableWithHeaders && tableWithHeaders.table) {
-          const dataRequests = [];
+        if (updatedTable?.table) {
+          const boldRequests = [];
           
-          // Data rows
-          for (let row = 1; row <= action_items.length; row++) {
-            const item = action_items[row - 1];
-            const tableRow = tableWithHeaders.table.tableRows[row];
-            
-            if (tableRow) {
-              // Task (with subtasks)
-              let taskText = item.task || '';
-              if (item.subtasks?.length > 0) {
-                taskText += '\n' + item.subtasks.map(st => `  • ${st.task}`).join('\n');
-              }
-              const taskCell = tableRow.tableCells[0];
-              if (taskCell?.content?.[0]?.startIndex) {
-                dataRequests.push({
-                  insertText: {
-                    location: { index: taskCell.content[0].startIndex },
-                    text: taskText
-                  }
-                });
-              }
-
-              // Assignee
-              const assigneeCell = tableRow.tableCells[1];
-              if (assigneeCell?.content?.[0]?.startIndex) {
-                dataRequests.push({
-                  insertText: {
-                    location: { index: assigneeCell.content[0].startIndex },
-                    text: item.assignee || '-'
-                  }
-                });
-              }
-
-              // Deadline
-              const deadlineCell = tableRow.tableCells[2];
-              if (deadlineCell?.content?.[0]?.startIndex) {
-                dataRequests.push({
-                  insertText: {
-                    location: { index: deadlineCell.content[0].startIndex },
-                    text: item.deadline || '-'
-                  }
-                });
-              }
-
-              // Priority
-              const priorityCell = tableRow.tableCells[3];
-              if (priorityCell?.content?.[0]?.startIndex) {
-                dataRequests.push({
-                  insertText: {
-                    location: { index: priorityCell.content[0].startIndex },
-                    text: item.priority || 'Medium'
+          // Bold header row
+          const headerRowCells = updatedTable.table.tableRows[0].tableCells;
+          for (const cell of headerRowCells) {
+            if (cell.content?.[0]?.paragraph?.elements?.[0]) {
+              const elem = cell.content[0].paragraph.elements[0];
+              if (elem.startIndex && elem.endIndex && elem.endIndex > elem.startIndex) {
+                boldRequests.push({
+                  updateTextStyle: {
+                    range: { startIndex: elem.startIndex, endIndex: elem.endIndex - 1 },
+                    textStyle: { bold: true },
+                    fields: 'bold'
                   }
                 });
               }
             }
           }
 
-          // Apply data rows
-          if (dataRequests.length > 0) {
+          // Apply bold formatting
+          if (boldRequests.length > 0) {
             await docs.documents.batchUpdate({
               documentId,
-              requestBody: { requests: dataRequests }
+              requestBody: { requests: boldRequests }
             });
           }
         }
@@ -370,47 +392,37 @@ export async function createMeetingActionItemsDoc({ meetingName, jsonContent, fo
     }
 
     // Add remaining sections after table
-    const finalRequests = [];
-    
-    // Get current end index
     const finalDoc = await docs.documents.get({ documentId });
     let finalIndex = finalDoc.data.body.content[finalDoc.data.body.content.length - 1].endIndex - 1;
 
+    let finalText = '';
+
     // Sentiment
     if (sentiment?.score) {
-      finalRequests.push({
-        insertText: { location: { index: finalIndex }, text: '\n\nMeeting Sentiment\n' }
-      });
-      finalIndex += 19;
-      
-      const sentimentText = `Score: ${sentiment.score}/5\n${sentiment.summary || ''}\n`;
-      finalRequests.push({
-        insertText: { location: { index: finalIndex }, text: sentimentText }
-      });
-      finalIndex += sentimentText.length;
+      finalText += '\n\nMeeting Sentiment\n';
+      finalText += `Score: ${sentiment.score}/5\n`;
+      if (sentiment.summary) finalText += `${sentiment.summary}\n`;
     }
 
     // Next Steps
     if (next_steps?.length > 0) {
-      finalRequests.push({
-        insertText: { location: { index: finalIndex }, text: '\nNext Steps\n' }
+      finalText += '\nNext Steps\n';
+      next_steps.forEach((step, i) => {
+        finalText += `${i + 1}. ${step}\n`;
       });
-      finalIndex += 12;
-
-      for (let i = 0; i < next_steps.length; i++) {
-        const stepText = `${i + 1}. ${next_steps[i]}\n`;
-        finalRequests.push({
-          insertText: { location: { index: finalIndex }, text: stepText }
-        });
-        finalIndex += stepText.length;
-      }
     }
 
-    // Apply final sections
-    if (finalRequests.length > 0) {
+    if (finalText) {
       await docs.documents.batchUpdate({
         documentId,
-        requestBody: { requests: finalRequests }
+        requestBody: {
+          requests: [{
+            insertText: {
+              location: { index: finalIndex },
+              text: finalText
+            }
+          }]
+        }
       });
     }
 

@@ -60,6 +60,9 @@ coverage
 # OAuth tokens (contains sensitive access tokens)
 tokens.json
 
+# Documentation folder
+docs/
+
 # Package manager lock files (uncomment if you don't want to commit them)
 # package-lock.json
 # yarn.lock

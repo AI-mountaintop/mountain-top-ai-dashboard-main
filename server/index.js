@@ -348,17 +348,27 @@ app.post('/api/action-items/send-email', async (req, res) => {
     // Use default meeting name if not provided
     const finalMeetingName = meeting_name || 'Meeting Action Items';
 
-    // Send email with JSON content for better formatting
+    // Send email with timeout
     console.log('[API] Calling sendEmail function...');
-    const result = await sendEmail({
-      to: email,
-      subject: `Meeting action items for :- ${finalMeetingName}`,
-      htmlContent: html_content,
-      jsonContent: json_content,
-      meetingName: finalMeetingName,
-      createdAt: created_at || new Date().toISOString(),
-      completedItemIds: completed_item_ids || []
+    
+    // Create a timeout promise
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Email sending timed out after 30 seconds')), 30000);
     });
+
+    // Race between email send and timeout
+    const result = await Promise.race([
+      sendEmail({
+        to: email,
+        subject: `Meeting action items for :- ${finalMeetingName}`,
+        htmlContent: html_content,
+        jsonContent: json_content,
+        meetingName: finalMeetingName,
+        createdAt: created_at || new Date().toISOString(),
+        completedItemIds: completed_item_ids || []
+      }),
+      timeoutPromise
+    ]);
 
     console.log('[API] Email sent successfully');
     res.json({

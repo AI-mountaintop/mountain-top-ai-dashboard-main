@@ -1,9 +1,8 @@
 import { google } from 'googleapis';
-import nodemailer from 'nodemailer';
 import { generateEmailHTML } from './emailTemplateGenerator.js';
 
 /**
- * Send email using Gmail API
+ * Send email using Gmail API (works in Railway/cloud environments)
  */
 export async function sendEmail({ to, subject, htmlContent, jsonContent, meetingName, createdAt, completedItemIds = [] }) {
   try {
@@ -11,16 +10,20 @@ export async function sendEmail({ to, subject, htmlContent, jsonContent, meeting
     console.log(`[Email] Subject: ${subject}`);
     console.log(`[Email] Completed items to exclude: ${completedItemIds.length}`);
     
-    // Check if we have Gmail credentials
-    const gmailUser = process.env.GMAIL_USER;
-    const gmailAppPassword = process.env.GMAIL_APP_PASSWORD;
+    // Check if we have Gmail API credentials
+    const clientId = process.env.GMAIL_CLIENT_ID;
+    const clientSecret = process.env.GMAIL_CLIENT_SECRET;
+    const redirectUri = process.env.GMAIL_REDIRECT_URI;
+    const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
+    const fromEmail = process.env.GMAIL_FROM;
 
-    if (!gmailUser || !gmailAppPassword) {
-      console.error('[Email] Gmail credentials not configured');
-      throw new Error('Gmail credentials not configured. Please set GMAIL_USER and GMAIL_APP_PASSWORD in .env');
+    if (!clientId || !clientSecret || !redirectUri || !refreshToken || !fromEmail) {
+      console.error('[Email] Gmail API credentials not configured');
+      throw new Error('Gmail API not configured. Please set GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REDIRECT_URI, GMAIL_REFRESH_TOKEN, and GMAIL_FROM in .env');
     }
 
-    console.log(`[Email] Using Gmail account: ${gmailUser}`);
+    console.log('[Email] Using Gmail API');
+    console.log(`[Email] Sending from: ${fromEmail}`);
 
     // Generate email HTML from JSON content if available, otherwise use provided HTML
     let emailHTML = htmlContent;
@@ -29,70 +32,33 @@ export async function sendEmail({ to, subject, htmlContent, jsonContent, meeting
       emailHTML = generateEmailHTML(jsonContent, meetingName, createdAt, completedItemIds);
     }
 
-    // Create transporter using Gmail SMTP
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: gmailUser,
-        pass: gmailAppPassword
-      }
+    // Create OAuth2 client
+    const oauth2Client = new google.auth.OAuth2(
+      clientId,
+      clientSecret,
+      redirectUri
+    );
+
+    // Set credentials
+    oauth2Client.setCredentials({
+      refresh_token: refreshToken
     });
 
-    // Verify transporter configuration
-    console.log('[Email] Verifying SMTP connection...');
-    await transporter.verify();
-    console.log('[Email] SMTP connection verified');
+    // Create Gmail API instance
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Send email
-    const mailOptions = {
-      from: gmailUser,
-      to: to,
-      subject: subject,
-      html: emailHTML
-    };
-
-    console.log('[Email] Sending email...');
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`[Email] Email sent successfully. Message ID: ${info.messageId}`);
-
-    return {
-      success: true,
-      messageId: info.messageId,
-      response: info.response
-    };
-  } catch (error) {
-    console.error(`[Email] Failed to send email: ${error.message}`);
-    throw new Error(`Failed to send email: ${error.message}`);
-  }
-}
-
-/**
- * Alternative: Send email using Gmail API (if you prefer OAuth2)
- * This requires setting up OAuth2 credentials and getting access tokens
- */
-export async function sendEmailViaGmailAPI({ to, subject, htmlContent }) {
-  try {
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-        private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-        project_id: process.env.GOOGLE_PROJECT_ID
-      },
-      scopes: [
-        'https://www.googleapis.com/auth/gmail.send'
-      ]
-    });
-
-    const gmail = google.gmail({ version: 'v1', auth });
-
-    // Create email message
-    const message = [
+    // Create email message in RFC 2822 format
+    const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
+    const messageParts = [
+      `From: Meeting Minutes <${fromEmail}>`,
       `To: ${to}`,
-      `Subject: ${subject}`,
+      `Subject: ${utf8Subject}`,
+      'MIME-Version: 1.0',
       'Content-Type: text/html; charset=utf-8',
       '',
-      htmlContent
-    ].join('\n');
+      emailHTML
+    ];
+    const message = messageParts.join('\n');
 
     // Encode message in base64url format
     const encodedMessage = Buffer.from(message)
@@ -101,20 +67,38 @@ export async function sendEmailViaGmailAPI({ to, subject, htmlContent }) {
       .replace(/\//g, '_')
       .replace(/=+$/, '');
 
-    const response = await gmail.users.messages.send({
+    console.log('[Email] Sending email via Gmail API...');
+
+    // Send email
+    const result = await gmail.users.messages.send({
       userId: 'me',
       requestBody: {
         raw: encodedMessage
       }
     });
 
+    console.log(`[Email] Email sent successfully. Message ID: ${result.data.id}`);
+
     return {
       success: true,
-      messageId: response.data.id
+      messageId: result.data.id,
+      response: 'Email sent via Gmail API'
     };
   } catch (error) {
-    console.error('Error sending email via Gmail API:', error);
-    throw new Error(`Failed to send email via Gmail API: ${error.message}`);
+    console.error(`[Email] Failed to send email: ${error.message}`);
+    console.error(`[Email] Error stack: ${error.stack}`);
+    
+    // Provide more helpful error messages
+    if (error.message.includes('credentials') || error.message.includes('not configured')) {
+      throw new Error('Email service not configured. Please contact administrator.');
+    }
+    if (error.message.includes('invalid_grant')) {
+      throw new Error('Gmail authentication expired. Please refresh credentials.');
+    }
+    if (error.message.includes('validation')) {
+      throw new Error('Invalid email address or content. Please check and try again.');
+    }
+    
+    throw new Error(`Failed to send email: ${error.message}`);
   }
 }
-
